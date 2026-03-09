@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a1018;
+  --bg-glow: #10253f;
+  --card: #111b28;
+  --card-strong: #162435;
+  --text-primary: #edf4ff;
+  --text-secondary: #a4b5cc;
+  --text-muted: #6c7c91;
+  --accent: #2f8cff;
+  --accent-strong: #57a2ff;
+  --signal-green: #2ad08b;
+  --signal-amber: #f7b23b;
+  --signal-red: #f56f6f;
+  --border: rgba(255, 255, 255, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(47, 140, 255, 0.18), transparent 32%),
+    radial-gradient(circle at top right, rgba(42, 208, 139, 0.12), transparent 25%),
+    linear-gradient(180deg, #071019 0%, var(--bg) 48%, #08111b 100%);
+  color: var(--text-primary);
+  font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(47, 140, 255, 0.35);
+}
+
+.mono {
+  font-family: "SFMono-Regular", "IBM Plex Mono", "Menlo", monospace;
+}
+
+.grid-lines {
+  position: relative;
+}
+
+.grid-lines::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent);
+  pointer-events: none;
+}
