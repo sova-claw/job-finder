@@ -29,3 +29,24 @@ def test_score_job_returns_gaps_for_ai_skills() -> None:
     assert 0 < score <= 100
     assert any(gap.skill == "LangChain / agents" for gap in gaps)
     assert any(gap.skill == "RAG + Vector DB" for gap in gaps)
+
+
+def test_score_job_does_not_award_irrelevant_skill_weight() -> None:
+    extraction = JobExtraction(
+        title="Operations Coordinator",
+        company="Example",
+        company_type="Service",
+        salary_min=1000,
+        salary_max=1500,
+        requirements_must=["Excel", "Stakeholder communication"],
+        requirements_nice=[],
+        tags=["Excel"],
+        domain="General",
+        remote=False,
+        location="Kyiv",
+    )
+
+    score, gaps = score_job(extraction, get_candidate_profile())
+
+    assert score == 0
+    assert gaps == []

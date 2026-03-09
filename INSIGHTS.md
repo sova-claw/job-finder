@@ -8,3 +8,5 @@
 - Kept ingestion unified: manual URL analysis and scheduled scrapers both flow through the same job enrichment pipeline.
 - Switched the frontend from a placeholder container to a real Next.js 15 dashboard with typed API integration and an actionable detail panel.
 - Locked Docker dependency installs against `uv.lock` and `package-lock.json` for reproducible builds.
+- Replaced DOU and Djinni list capture with Playwright-rendered HTML and added parsed posted-date handling for more stable dedup.
+- Moved stats away from full-table ORM loads, added DB-side search-vector maintenance, and tightened Anthropic prompt parsing/logging.

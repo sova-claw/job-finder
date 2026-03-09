@@ -5,13 +5,15 @@ from datetime import UTC, datetime
 from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.scraper.common import ScrapedPosting, fetch_html, save_scraped_posting
 
-HN_URL = "https://news.ycombinator.com/item?id=42306918"
+settings = get_settings()
 
 
 async def scrape_hn_jobs(session: AsyncSession) -> dict[str, int]:
-    html = await fetch_html(HN_URL)
+    hn_url = f"https://news.ycombinator.com/item?id={settings.hn_thread_id}"
+    html = await fetch_html(hn_url)
     soup = BeautifulSoup(html, "html.parser")
     comments = soup.select(".comment-tree .athing.comtr")
 
@@ -25,7 +27,7 @@ async def scrape_hn_jobs(session: AsyncSession) -> dict[str, int]:
         raw_text = text_node.get_text("\n", strip=True)
         title = raw_text.split("\n", maxsplit=1)[0][:100]
         posting = ScrapedPosting(
-            url=HN_URL,
+            url=hn_url,
             source="HN",
             source_group="Startups",
             title=title or "HN role",

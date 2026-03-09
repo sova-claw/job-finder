@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -75,42 +74,42 @@ class SchedulerService:
         if self._started:
             return
         self.scheduler.add_job(
-            lambda: asyncio.create_task(self.run_dou_job()),
+            self.run_dou_job,
             "interval",
             hours=settings.dou_scrape_interval_hours,
             id="scrape-dou",
             replace_existing=True,
         )
         self.scheduler.add_job(
-            lambda: asyncio.create_task(self.run_djinni_job()),
+            self.run_djinni_job,
             "interval",
             hours=settings.djinni_scrape_interval_hours,
             id="scrape-djinni",
             replace_existing=True,
         )
         self.scheduler.add_job(
-            lambda: asyncio.create_task(self.run_bigco_job()),
+            self.run_bigco_job,
             "interval",
             weeks=1,
             id="scrape-bigco",
             replace_existing=True,
         )
         self.scheduler.add_job(
-            lambda: asyncio.create_task(self.run_linkedin_job()),
+            self.run_linkedin_job,
             "interval",
             days=1,
             id="scrape-linkedin",
             replace_existing=True,
         )
         self.scheduler.add_job(
-            lambda: asyncio.create_task(self.run_yc_job()),
+            self.run_yc_job,
             "interval",
             days=1,
             id="scrape-yc",
             replace_existing=True,
         )
         self.scheduler.add_job(
-            lambda: asyncio.create_task(self.run_hn_job()),
+            self.run_hn_job,
             "interval",
             weeks=4,
             id="scrape-hn",

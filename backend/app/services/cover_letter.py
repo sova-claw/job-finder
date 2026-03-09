@@ -21,6 +21,13 @@ TONE_GUIDANCE = {
     "enthusiastic": "Warmer, company-specific, but still concise. 200-240 words.",
 }
 
+COVER_LETTER_SYSTEM_PROMPT = (
+    "You write concise, honest cover letters for software engineers. "
+    "No generic phrases. No 'I am passionate about'. No 'team player'. "
+    "Reference specific technologies from the job description. "
+    "Three paragraphs exactly."
+)
+
 
 def _collect_profile_tags(job: Job) -> list[str]:
     profile = get_candidate_profile()
@@ -79,17 +86,19 @@ async def _anthropic_letter(job: Job, tone: Tone, tags_used: list[str]) -> str:
             "requirements_must": job.requirements_must,
         }
     )
+    similar_wins: list[str] = []
     prompt = (
-        "Write a concise, honest cover letter for a software engineer. "
-        "No generic phrases. Three paragraphs exactly. "
-        f"Tone: {tone}. JOB: {job_payload} "
+        f"Write a {tone} cover letter for this application. "
+        f"JOB: {job_payload} "
         f"CANDIDATE: {profile.model_dump_json()} "
+        f"SIMILAR_WINS: {json.dumps(similar_wins)} "
         f"PROFILE_TAGS_USED: {json.dumps(tags_used)}"
     )
     payload = {
         "model": settings.anthropic_cover_letter_model,
         "temperature": 0.7,
         "max_tokens": 900,
+        "system": COVER_LETTER_SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": prompt}],
     }
     async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:

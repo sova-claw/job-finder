@@ -1,4 +1,4 @@
-from sqlalchemy import Select, asc, desc, func, or_, select
+from sqlalchemy import Select, String, asc, desc, func, or_, select
 
 from app.models.job import Job
 
@@ -15,13 +15,12 @@ def build_job_query(
         query = query.where(Job.source_group == source_group)
 
     if search:
-        pattern = f"%{search}%"
+        ts_query = func.websearch_to_tsquery("english", search)
         query = query.where(
             or_(
-                Job.title.ilike(pattern),
-                Job.company.ilike(pattern),
-                Job.raw_text.ilike(pattern),
-                Job.domain.ilike(pattern),
+                Job.search_vector.op("@@")(ts_query),
+                Job.title.ilike(f"%{search}%"),
+                Job.company.ilike(f"%{search}%"),
             )
         )
 
@@ -34,5 +33,9 @@ def build_job_query(
     }
     column = sort_columns.get(sort_by, Job.match_score)
     ordering = asc if sort_dir == "asc" else desc
-    query = query.order_by(ordering(func.coalesce(column, 0 if sort_dir == "asc" else -1)))
+
+    if getattr(column.type, "python_type", None) is str or isinstance(column.type, String):
+        query = query.order_by(ordering(func.coalesce(column, "")))
+    else:
+        query = query.order_by(ordering(column).nullslast())
     return query

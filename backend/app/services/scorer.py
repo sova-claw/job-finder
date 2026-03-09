@@ -58,7 +58,7 @@ def _current_strength(profile: CandidateProfile, label: str) -> int:
 
 def _weight_score(label: str, weight: int, current: int, required: bool) -> int:
     if not required:
-        return min(weight, max(0, round(weight * 0.8)))
+        return 0
     return round(weight * (current / 100))
 
 

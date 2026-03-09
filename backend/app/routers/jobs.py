@@ -43,10 +43,10 @@ async def get_job(
     return to_job_detail(job)
 
 
-@router.post("/analyze-url", response_model=JobDetail, status_code=status.HTTP_201_CREATED)
+@router.post("/analyze-url", response_model=JobDetail, status_code=status.HTTP_200_OK)
 async def analyze_url(
     payload: AnalyzeUrlRequest,
     session: AsyncSession = Depends(get_session),
 ) -> JobDetail:
-    job = await upsert_job_from_url(session, str(payload.url))
+    job, _created = await upsert_job_from_url(session, str(payload.url))
     return to_job_detail(job)

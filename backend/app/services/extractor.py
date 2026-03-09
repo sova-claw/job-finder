@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import Iterable
 
@@ -11,6 +12,7 @@ from app.config import get_settings
 from app.schemas.job import JobExtraction
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 TAG_CANONICAL = {
     "python": "Python",
@@ -48,6 +50,14 @@ DOMAIN_HINTS = {
     "media": "MediaTech",
     "developer tools": "Developer Tools",
 }
+
+EXTRACTOR_SYSTEM_PROMPT = (
+    "Extract structured data from this job posting. "
+    "Respond ONLY with valid JSON matching this schema. "
+    "Do not add markdown fences. "
+    "Schema: {title, company, company_type, salary_min, salary_max, requirements_must, "
+    "requirements_nice, tags, domain, remote, location}."
+)
 
 
 def normalize_tag(tag: str) -> str:
@@ -113,6 +123,14 @@ def unique_keep_order(values: Iterable[str]) -> list[str]:
     return result
 
 
+def strip_json_fences(text: str) -> str:
+    candidate = text.strip()
+    if candidate.startswith("```"):
+        candidate = re.sub(r"^```(?:json)?\s*", "", candidate)
+        candidate = re.sub(r"\s*```$", "", candidate)
+    return candidate.strip()
+
+
 def heuristic_extract(raw_text: str, *, url: str = "", source: str = "") -> JobExtraction:
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     title = lines[0] if lines else "Unknown role"
@@ -156,7 +174,7 @@ def heuristic_extract(raw_text: str, *, url: str = "", source: str = "") -> JobE
         domain = url.split("/")[2]
         company = domain.split(".")[0].replace("-", " ").title()
 
-    extraction = JobExtraction(
+    return JobExtraction(
         title=title,
         company=company,
         company_type=infer_company_type(raw_text),
@@ -169,18 +187,10 @@ def heuristic_extract(raw_text: str, *, url: str = "", source: str = "") -> JobE
         remote=remote,
         location=location,
     )
-    return extraction
 
 
 def build_extraction_prompt(raw_text: str) -> str:
-    return (
-        "Extract structured data from this job posting. "
-        "Respond only with valid JSON matching this schema: "
-        "{title, company, company_type, salary_min, salary_max, "
-        "requirements_must, requirements_nice, "
-        "tags, domain, remote, location}. "
-        f"Job posting:\n{raw_text}"
-    )
+    return f"Job posting:\n{raw_text}"
 
 
 async def anthropic_extract(raw_text: str) -> JobExtraction:
@@ -193,22 +203,28 @@ async def anthropic_extract(raw_text: str) -> JobExtraction:
         "model": settings.anthropic_extractor_model,
         "max_tokens": 1200,
         "temperature": 0,
+        "system": EXTRACTOR_SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": build_extraction_prompt(raw_text)}],
     }
     async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
         response = await client.post(settings.anthropic_base_url, headers=headers, json=payload)
         response.raise_for_status()
     data = response.json()
-    text = "".join(part["text"] for part in data.get("content", []) if part.get("type") == "text")
-    parsed = json.loads(text)
+    text_response = "".join(
+        part["text"] for part in data.get("content", []) if part.get("type") == "text"
+    )
+    parsed = json.loads(strip_json_fences(text_response))
     return JobExtraction.model_validate(parsed)
 
 
 async def extract_job_details(raw_text: str, *, url: str = "", source: str = "") -> JobExtraction:
     if settings.anthropic_api_key:
-        for _attempt in range(2):
+        for attempt in range(2):
             try:
                 return await anthropic_extract(raw_text)
-            except (ValidationError, httpx.HTTPError, json.JSONDecodeError):
-                continue
+            except (ValidationError, httpx.HTTPError, json.JSONDecodeError) as exc:
+                logger.warning(
+                    "Anthropic extraction failed; retrying with fallback guard",
+                    extra={"attempt": attempt + 1, "error": str(exc)},
+                )
     return heuristic_extract(raw_text, url=url, source=source)

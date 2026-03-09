@@ -1,21 +1,25 @@
 from collections import Counter
+from collections.abc import Iterable
 
-from app.models.job import Job
 from app.schemas.job import MarketInsight
 
 
-def build_market_insight(jobs: list[Job]) -> MarketInsight:
+def build_market_insight(
+    rows: Iterable[tuple[list[str] | None, int | None, int | None, bool | None]],
+) -> MarketInsight:
     skill_counter: Counter[str] = Counter()
     salary_counter: Counter[str] = Counter()
     remote_count = 0
+    total = 0
 
-    for job in jobs:
-        for requirement in job.requirements_must or []:
+    for requirements_must, salary_min, salary_max, remote in rows:
+        total += 1
+        for requirement in requirements_must or []:
             skill_counter[requirement] += 1
-        if job.remote:
+        if remote:
             remote_count += 1
 
-        salary = job.salary_max or job.salary_min
+        salary = salary_max or salary_min
         if salary is None:
             salary_counter["Undisclosed"] += 1
         elif salary < 4000:
@@ -36,5 +40,5 @@ def build_market_insight(jobs: list[Job]) -> MarketInsight:
             {"band": band, "count": count}
             for band, count in salary_counter.items()
         ],
-        remote_ratio=round((remote_count / len(jobs)) * 100, 1) if jobs else 0.0,
+        remote_ratio=round((remote_count / total) * 100, 1) if total else 0.0,
     )

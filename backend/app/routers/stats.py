@@ -1,7 +1,7 @@
 from collections import Counter
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
@@ -16,36 +16,38 @@ router = APIRouter(tags=["stats"])
 
 @router.get("/stats", response_model=JobStats)
 async def get_stats(session: AsyncSession = Depends(get_session)) -> JobStats:
-    result = await session.execute(select(Job))
-    jobs = result.scalars().all()
-    gap_counter: Counter[str] = Counter()
-    source_breakdown: Counter[str] = Counter()
-    total_score = 0
-    scored_jobs = 0
-    high_pay_count = 0
-    active_jobs = 0
+    summary = await session.execute(
+        select(
+            func.count(Job.id),
+            func.count(Job.id).filter(Job.is_active.is_(True)),
+            func.avg(Job.match_score),
+            func.count(Job.id).filter(
+                func.coalesce(Job.salary_max, Job.salary_min, 0) >= 5_000
+            ),
+        )
+    )
+    total_jobs, active_jobs, avg_score, high_pay_count = summary.one()
 
-    for job in jobs:
-        source_breakdown[job.source_group] += 1
-        if job.is_active:
-            active_jobs += 1
-        if job.match_score is not None:
-            total_score += job.match_score
-            scored_jobs += 1
-        if job.salary_max and job.salary_max >= 10_000:
-            high_pay_count += 1
-        for gap in job.gaps or []:
+    source_rows = await session.execute(
+        select(Job.source_group, func.count(Job.id)).group_by(Job.source_group)
+    )
+    source_breakdown = {source_group: count for source_group, count in source_rows}
+
+    gaps_rows = await session.execute(select(Job.gaps).where(Job.gaps.is_not(None)))
+    gap_counter: Counter[str] = Counter()
+    for gaps in gaps_rows.scalars():
+        for gap in gaps or []:
             skill = gap.get("skill")
             if skill:
                 gap_counter[skill] += 1
 
     return JobStats(
-        total_jobs=len(jobs),
-        active_jobs=active_jobs,
-        avg_score=round(total_score / scored_jobs, 1) if scored_jobs else 0.0,
-        high_pay_count=high_pay_count,
+        total_jobs=total_jobs or 0,
+        active_jobs=active_jobs or 0,
+        avg_score=round(float(avg_score or 0.0), 1),
+        high_pay_count=high_pay_count or 0,
         top_gap=gap_counter.most_common(1)[0][0] if gap_counter else None,
-        source_breakdown=dict(source_breakdown),
+        source_breakdown=source_breakdown,
     )
 
 
@@ -56,6 +58,7 @@ async def get_profile() -> CandidateProfile:
 
 @router.get("/market", response_model=MarketInsight)
 async def get_market_insight(session: AsyncSession = Depends(get_session)) -> MarketInsight:
-    result = await session.execute(select(Job))
-    jobs = result.scalars().all()
-    return build_market_insight(jobs)
+    rows = await session.execute(
+        select(Job.requirements_must, Job.salary_min, Job.salary_max, Job.remote)
+    )
+    return build_market_insight(rows.all())

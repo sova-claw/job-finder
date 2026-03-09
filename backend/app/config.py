@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     anthropic_cover_letter_model: str = "claude-sonnet-4-20250514"
     apify_token: str = ""
     cf_tunnel_token: str = ""
+    hn_thread_id: str = "42306918"
 
     frontend_url: str = "http://localhost:3000"
     cors_origins: list[str] = [
@@ -35,6 +36,10 @@ class Settings(BaseSettings):
     dou_scrape_interval_hours: int = 6
     djinni_scrape_interval_hours: int = 6
     request_timeout_seconds: float = 25.0
+    scraper_user_agent: str = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

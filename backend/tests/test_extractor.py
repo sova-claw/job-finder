@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.extractor import extract_job_details
+from app.services.extractor import extract_job_details, strip_json_fences
 
 
 @pytest.mark.asyncio
@@ -28,3 +28,11 @@ async def test_extract_job_details_heuristic() -> None:
     assert extraction.salary_max == 7000
     assert "Python" in extraction.tags
     assert extraction.remote is True
+
+
+def test_strip_json_fences() -> None:
+    payload = """```json
+    {"title":"Engineer"}
+    ```"""
+
+    assert strip_json_fences(payload) == '{"title":"Engineer"}'
