@@ -3,6 +3,7 @@ import {
   CoverLetterResponse,
   JobDetail,
   JobListResponse,
+  MarketInsight,
   JobStats,
   SourceGroup,
   Tone
@@ -63,6 +64,10 @@ export async function fetchStats(): Promise<JobStats> {
 
 export async function fetchProfile(): Promise<CandidateProfile> {
   return request<CandidateProfile>("/profile");
+}
+
+export async function fetchMarketInsight(): Promise<MarketInsight> {
+  return request<MarketInsight>("/market");
 }
 
 export async function generateCoverLetter(

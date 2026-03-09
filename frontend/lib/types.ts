@@ -50,6 +50,12 @@ export interface JobStats {
   source_breakdown: Record<string, number>;
 }
 
+export interface MarketInsight {
+  top_skills: { skill: string; count: number }[];
+  salary_distribution: { band: string; count: number }[];
+  remote_ratio: number;
+}
+
 export interface CandidateProfile {
   name: string;
   title: string;

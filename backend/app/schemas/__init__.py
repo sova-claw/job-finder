@@ -7,6 +7,7 @@ from app.schemas.job import (
     JobListResponse,
     JobStats,
     JobSummary,
+    MarketInsight,
 )
 from app.schemas.profile import CandidateProfile
 
@@ -19,6 +20,7 @@ __all__ = [
     "JobDetail",
     "JobExtraction",
     "JobListResponse",
+    "MarketInsight",
     "JobStats",
     "JobSummary",
 ]

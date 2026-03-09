@@ -6,8 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
 from app.models.job import Job
-from app.schemas.job import JobStats
+from app.schemas.job import JobStats, MarketInsight
 from app.schemas.profile import CandidateProfile
+from app.services.market import build_market_insight
 from app.services.profile import get_candidate_profile
 
 router = APIRouter(tags=["stats"])
@@ -51,3 +52,10 @@ async def get_stats(session: AsyncSession = Depends(get_session)) -> JobStats:
 @router.get("/profile", response_model=CandidateProfile)
 async def get_profile() -> CandidateProfile:
     return get_candidate_profile()
+
+
+@router.get("/market", response_model=MarketInsight)
+async def get_market_insight(session: AsyncSession = Depends(get_session)) -> MarketInsight:
+    result = await session.execute(select(Job))
+    jobs = result.scalars().all()
+    return build_market_insight(jobs)

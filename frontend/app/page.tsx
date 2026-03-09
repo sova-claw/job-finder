@@ -1,7 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from "recharts";
 import { Search } from "lucide-react";
 import { useState, useTransition } from "react";
 
@@ -11,7 +19,7 @@ import { TabBar } from "@/components/TabBar";
 import { TopBar } from "@/components/TopBar";
 import { UrlAnalyzer } from "@/components/UrlAnalyzer";
 import { Card } from "@/components/ui/card";
-import { fetchJob, fetchJobs, fetchProfile, fetchStats } from "@/lib/api";
+import { fetchJob, fetchJobs, fetchMarketInsight, fetchProfile, fetchStats } from "@/lib/api";
 import { JobDetail, SourceGroup } from "@/lib/types";
 
 export default function Page() {
@@ -33,6 +41,11 @@ export default function Page() {
     queryFn: fetchProfile
   });
 
+  const marketQuery = useQuery({
+    queryKey: ["market"],
+    queryFn: fetchMarketInsight
+  });
+
   const jobsQuery = useQuery({
     queryKey: ["jobs", sourceGroup, search, sortBy, sortDir],
     queryFn: () => fetchJobs({ sourceGroup, search, sortBy, sortDir })
@@ -47,6 +60,8 @@ export default function Page() {
   const selectedJob = manualJob && manualJob.id === selectedJobId ? manualJob : detailQuery.data ?? null;
   const sourceBreakdown = statsQuery.data?.source_breakdown ?? {};
   const chartData = Object.entries(sourceBreakdown).map(([name, count]) => ({ name, count }));
+  const skillData = marketQuery.data?.top_skills ?? [];
+  const salaryData = marketQuery.data?.salary_distribution ?? [];
 
   function handleSort(field: string) {
     startTransition(() => {
@@ -156,6 +171,57 @@ export default function Page() {
                       }}
                     />
                     <Bar dataKey="count" radius={[10, 10, 0, 0]} fill="var(--accent)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+
+            <Card className="p-5">
+              <p className="text-sm uppercase tracking-[0.2em] text-[var(--text-muted)]">Market heat</p>
+              <div className="mt-2 flex items-center justify-between text-sm text-[var(--text-secondary)]">
+                <span>Remote ratio</span>
+                <span>{marketQuery.data?.remote_ratio ?? 0}%</span>
+              </div>
+              <div className="mt-4 h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={skillData} layout="vertical">
+                    <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                    <XAxis type="number" stroke="#6c7c91" tickLine={false} axisLine={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="skill"
+                      width={120}
+                      stroke="#6c7c91"
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: 18,
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: "#101926"
+                      }}
+                    />
+                    <Bar dataKey="count" radius={[0, 10, 10, 0]} fill="var(--signal-green)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+
+            <Card className="p-5">
+              <p className="text-sm uppercase tracking-[0.2em] text-[var(--text-muted)]">Salary bands</p>
+              <div className="mt-4 h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={salaryData}>
+                    <XAxis dataKey="band" stroke="#6c7c91" tickLine={false} axisLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: 18,
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        background: "#101926"
+                      }}
+                    />
+                    <Bar dataKey="count" radius={[10, 10, 0, 0]} fill="var(--signal-amber)" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

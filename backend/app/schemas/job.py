@@ -73,3 +73,9 @@ class JobStats(BaseModel):
     high_pay_count: int
     top_gap: str | None = None
     source_breakdown: dict[str, int]
+
+
+class MarketInsight(BaseModel):
+    top_skills: list[dict[str, int]]
+    salary_distribution: list[dict[str, int | str]]
+    remote_ratio: float
