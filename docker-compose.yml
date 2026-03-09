@@ -1,0 +1,66 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: cis_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cis
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - cis_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cis_backend
+    restart: unless-stopped
+    working_dir: /app
+    env_file:
+      - ./backend/.env.example
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/cis
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "uv run alembic upgrade head && uv run uvicorn main:app --host 0.0.0.0 --port 8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cis_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+
+  caddy:
+    image: caddy:2.8
+    container_name: cis_caddy
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  cis_postgres_data:
+  caddy_data:
+  caddy_config:
