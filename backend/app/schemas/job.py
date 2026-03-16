@@ -75,7 +75,17 @@ class JobStats(BaseModel):
     source_breakdown: dict[str, int]
 
 
+class SkillCount(BaseModel):
+    skill: str
+    count: int
+
+
+class SalaryBandCount(BaseModel):
+    band: str
+    count: int
+
+
 class MarketInsight(BaseModel):
-    top_skills: list[dict[str, int]]
-    salary_distribution: list[dict[str, int | str]]
+    top_skills: list[SkillCount]
+    salary_distribution: list[SalaryBandCount]
     remote_ratio: float
