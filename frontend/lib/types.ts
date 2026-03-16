@@ -1,5 +1,6 @@
 export type SourceGroup = "All" | "Ukraine" | "BigCo" | "Startups" | "Global";
 export type Tone = "professional" | "direct" | "enthusiastic";
+export type Verdict = "apply_now" | "prepare_first" | "not_aligned";
 
 export interface Gap {
   skill: string;
@@ -23,6 +24,8 @@ export interface JobSummary {
   remote: boolean | null;
   location: string | null;
   match_score: number | null;
+  top_gap: string | null;
+  verdict: Verdict;
   posted_at: string | null;
   scraped_at: string | null;
   is_active: boolean;

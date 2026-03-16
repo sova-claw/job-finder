@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, HttpUrl
 from app.schemas.common import APIModel
 
 SourceGroup = Literal["Ukraine", "BigCo", "Startups", "Global"]
+Verdict = Literal["apply_now", "prepare_first", "not_aligned"]
 
 
 class Gap(BaseModel):
@@ -44,6 +45,8 @@ class JobSummary(APIModel):
     remote: bool | None = None
     location: str | None = None
     match_score: int | None = None
+    top_gap: str | None = None
+    verdict: Verdict = "not_aligned"
     posted_at: datetime | None = None
     scraped_at: datetime | None = None
     is_active: bool

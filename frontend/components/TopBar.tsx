@@ -5,7 +5,7 @@ import { Activity, DollarSign, Sparkles, Target } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { JobStats } from "@/lib/types";
 
-const cards = [
+const metrics = [
   {
     key: "total_jobs",
     label: "Tracked roles",
@@ -30,30 +30,35 @@ const cards = [
 
 export function TopBar({ stats }: { stats?: JobStats }) {
   return (
-    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-      {cards.map(({ key, label, icon: Icon }) => {
-        const rawValue = stats?.[key];
-        const value =
-          key === "avg_score"
-            ? `${rawValue ?? 0}%`
-            : typeof rawValue === "number"
-              ? rawValue.toLocaleString()
-              : rawValue ?? "n/a";
+    <Card className="rounded-[22px] px-3 py-3 md:px-4">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {metrics.map(({ key, label, icon: Icon }) => {
+          const rawValue = stats?.[key];
+          const value =
+            key === "avg_score"
+              ? `${rawValue ?? 0}%`
+              : typeof rawValue === "number"
+                ? rawValue.toLocaleString()
+                : rawValue ?? "n/a";
 
-        return (
-          <Card className="p-5" key={key}>
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm uppercase tracking-[0.2em] text-[var(--text-muted)]">{label}</p>
-                <p className="mt-3 text-3xl font-semibold">{value}</p>
-              </div>
-              <span className="rounded-full border border-white/10 bg-white/6 p-3 text-[var(--accent)]">
-                <Icon size={18} />
+          return (
+            <div
+              key={key}
+              className="flex items-center gap-3 rounded-[18px] border border-white/8 bg-black/10 px-3 py-3"
+            >
+              <span className="rounded-full border border-white/10 bg-white/6 p-2 text-[var(--accent)]">
+                <Icon size={14} />
               </span>
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--text-muted)]">
+                  {label}
+                </p>
+                <p className="mt-1 truncate text-lg font-semibold text-white">{value}</p>
+              </div>
             </div>
-          </Card>
-        );
-      })}
-    </section>
+          );
+        })}
+      </div>
+    </Card>
   );
 }

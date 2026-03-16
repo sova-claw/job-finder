@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.job import JobDetail, JobSummary, SourceGroup
+from app.models.job import Job
+from app.schemas.job import JobDetail, JobSummary, SourceGroup, Verdict
 from app.scraper.common import ScrapedPosting, fetch_html, save_scraped_posting
 
 
@@ -20,6 +22,52 @@ def normalize_source_group(url: str) -> SourceGroup:
     return "BigCo"
 
 
+def derive_top_gap(gaps: list[dict[str, Any]] | None) -> str | None:
+    if not gaps:
+        return None
+    first_gap = gaps[0]
+    return first_gap.get("skill")
+
+
+def derive_verdict(match_score: int | None) -> Verdict:
+    if match_score is None:
+        return "not_aligned"
+    if match_score >= 70:
+        return "apply_now"
+    if match_score >= 45:
+        return "prepare_first"
+    return "not_aligned"
+
+
+def serialize_job(job: Job) -> dict[str, Any]:
+    return {
+        "id": job.id,
+        "url": job.url,
+        "source": job.source,
+        "source_group": job.source_group,
+        "title": job.title,
+        "company": job.company,
+        "company_type": job.company_type,
+        "salary_min": job.salary_min,
+        "salary_max": job.salary_max,
+        "tags": job.tags,
+        "domain": job.domain,
+        "remote": job.remote,
+        "location": job.location,
+        "match_score": job.match_score,
+        "top_gap": derive_top_gap(job.gaps),
+        "verdict": derive_verdict(job.match_score),
+        "posted_at": job.posted_at,
+        "scraped_at": job.scraped_at,
+        "is_active": job.is_active,
+        "raw_text": job.raw_text,
+        "requirements_must": job.requirements_must,
+        "requirements_nice": job.requirements_nice,
+        "gaps": job.gaps,
+        "extracted_at": job.extracted_at,
+    }
+
+
 async def fetch_job_page(url: str) -> tuple[str, str]:
     html = await fetch_html(url)
     soup = BeautifulSoup(html, "html.parser")
@@ -28,7 +76,7 @@ async def fetch_job_page(url: str) -> tuple[str, str]:
     return title, text
 
 
-async def upsert_job_from_url(session: AsyncSession, url: str) -> tuple[object, bool]:
+async def upsert_job_from_url(session: AsyncSession, url: str) -> tuple[Job, bool]:
     title, raw_text = await fetch_job_page(url)
     posting = ScrapedPosting(
         url=url,
@@ -45,9 +93,9 @@ async def upsert_job_from_url(session: AsyncSession, url: str) -> tuple[object, 
     return job, is_new
 
 
-def to_job_summary(job: object) -> JobSummary:
-    return JobSummary.model_validate(job)
+def to_job_summary(job: Job) -> JobSummary:
+    return JobSummary.model_validate(serialize_job(job))
 
 
-def to_job_detail(job: object) -> JobDetail:
-    return JobDetail.model_validate(job)
+def to_job_detail(job: Job) -> JobDetail:
+    return JobDetail.model_validate(serialize_job(job))
