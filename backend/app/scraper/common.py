@@ -16,7 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models.job import Job
 from app.services.extractor import extract_job_details
-from app.services.profile import get_candidate_profile
+from app.services.profile import (
+    get_candidate_profile,
+    matches_abroad_remote_preference,
+    matches_focus_role,
+)
 from app.services.scorer import score_job
 
 settings = get_settings()
@@ -267,6 +271,14 @@ async def save_scraped_posting(session: AsyncSession, posting: ScrapedPosting) -
         job.match_score = score
         job.gaps = [gap.model_dump(mode="json") for gap in gaps]
         job.extracted_at = datetime.now(UTC)
+        job.is_active = matches_focus_role(job.title or posting.title, posting.raw_text) and (
+            matches_abroad_remote_preference(
+                title=job.title or posting.title,
+                location=job.location,
+                raw_text=posting.raw_text,
+                remote=job.remote,
+            )
+        )
 
     await session.flush()
     await update_search_vector(session, job.id)

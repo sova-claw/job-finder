@@ -154,7 +154,16 @@ def heuristic_extract(raw_text: str, *, url: str = "", source: str = "") -> JobE
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     title = lines[0] if lines else "Unknown role"
     company = source or "Unknown company"
-    if " at " in title:
+    if " – djinni" in title.lower() and " в " in title:
+        title, company = [
+            part.strip()
+            for part in title.rsplit(" – ", maxsplit=1)[0].split(" в ", maxsplit=1)
+        ]
+    elif " | dou" in title.lower() and " в " in title:
+        trimmed = title.rsplit("|", maxsplit=1)[0].strip()
+        title, company = [part.strip() for part in trimmed.split(" в ", maxsplit=1)]
+        company = company.split(",", maxsplit=1)[0].strip()
+    elif " at " in title:
         title, company = [part.strip() for part in title.split(" at ", maxsplit=1)]
     elif len(lines) > 1 and len(lines[1]) < 70:
         company = lines[1]
@@ -182,7 +191,7 @@ def heuristic_extract(raw_text: str, *, url: str = "", source: str = "") -> JobE
     remote = "remote" in raw_text.lower()
     location = None
     location_match = re.search(
-        r"(Kyiv|Ukraine|Remote|Europe|Poland|Berlin|London|USA)",
+        r"(Kyiv|Ukraine|Remote|Europe|Poland|Berlin|London|USA|Germany|Netherlands|Cyprus|Moldova|Київ|Львів|Харків|Одеса|Дніпро|Рівне)",
         raw_text,
         re.IGNORECASE,
     )

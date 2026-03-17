@@ -11,7 +11,11 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from app.database import SessionLocal
 from app.models.job import Job
 from app.services.extractor import extract_job_details
-from app.services.profile import get_candidate_profile, matches_focus_role
+from app.services.profile import (
+    get_candidate_profile,
+    matches_abroad_remote_preference,
+    matches_focus_role,
+)
 from app.services.scorer import score_job
 
 
@@ -41,7 +45,14 @@ async def main() -> None:
             job.location = extraction.location
             job.match_score = score
             job.gaps = [gap.model_dump() for gap in gaps]
-            job.is_active = matches_focus_role(extraction.title, job.raw_text or "")
+            job.is_active = matches_focus_role(extraction.title, job.raw_text or "") and (
+                matches_abroad_remote_preference(
+                    title=extraction.title,
+                    location=extraction.location,
+                    raw_text=job.raw_text or "",
+                    remote=extraction.remote,
+                )
+            )
 
         await session.commit()
         print(f"rescored_jobs={len(jobs)}")

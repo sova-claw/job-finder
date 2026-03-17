@@ -27,12 +27,46 @@ PYTHON_QA_STACK_KEYWORDS = (
     "rest api",
 )
 
+FOREIGN_LOCATION_KEYWORDS = (
+    "europe",
+    "poland",
+    "usa",
+    "germany",
+    "netherlands",
+    "cyprus",
+    "moldova",
+    "slovakia",
+    "slovenia",
+    "united kingdom",
+    "romania",
+    "czech",
+)
+
+LOCAL_LOCATION_KEYWORDS = (
+    "ukraine",
+    "kyiv",
+    "kyiv region",
+    "київ",
+    "львів",
+    "lviv",
+    "kharkiv",
+    "харків",
+    "odesa",
+    "одеса",
+    "dnipro",
+    "дніпро",
+    "poltava",
+    "рівне",
+    "rivne",
+)
+
 PROFILE = CandidateProfile(
     name="Nazar Khimin",
     title="Senior QA Automation Engineer (Python)",
     summary=(
         "Senior QA automation engineer focused on Python-based test platforms, API quality, "
-        "CI/CD quality gates, and scalable automation for product teams."
+        "CI/CD quality gates, scalable automation for product teams, and remote or abroad "
+        "opportunities."
     ),
     location="Kyiv, Ukraine",
     english_level="B2+",
@@ -117,5 +151,28 @@ def has_python_qa_stack_signal(text: str) -> bool:
 
 
 def matches_focus_role(title: str, raw_text: str = "") -> bool:
-    searchable = f"{title}\n{raw_text}".lower()
-    return has_role_focus_signal(searchable) and has_python_qa_stack_signal(searchable)
+    title_text = title.lower()
+    body_text = raw_text.lower()
+    return has_role_focus_signal(title_text) and (
+        has_python_qa_stack_signal(title_text) or has_python_qa_stack_signal(body_text)
+    )
+
+
+def matches_abroad_remote_preference(
+    *,
+    title: str,
+    location: str | None = None,
+    raw_text: str = "",
+    remote: bool | None = None,
+) -> bool:
+    header_excerpt = "\n".join(raw_text.splitlines()[:24])
+    searchable = "\n".join(filter(None, (title, location or "", header_excerpt))).lower()
+
+    has_foreign_location = any(keyword in searchable for keyword in FOREIGN_LOCATION_KEYWORDS)
+    has_local_location = any(keyword in searchable for keyword in LOCAL_LOCATION_KEYWORDS)
+
+    if has_foreign_location:
+        return True
+    if remote and not has_local_location:
+        return True
+    return False
