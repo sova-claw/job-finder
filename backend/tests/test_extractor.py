@@ -6,13 +6,13 @@ from app.services.extractor import extract_job_details, strip_json_fences
 @pytest.mark.asyncio
 async def test_extract_job_details_heuristic() -> None:
     raw_text = """
-    Senior Python AI Engineer at Example Labs
+    Senior Python QA Automation Engineer at Example Labs
     Remote, Europe
     Salary $5000-7000
     - Python
-    - FastAPI
-    - LangChain
-    - RAG pipelines
+    - Pytest
+    - Playwright
+    - API testing
     - AWS
     """
 
@@ -22,11 +22,12 @@ async def test_extract_job_details_heuristic() -> None:
         source="Example Labs",
     )
 
-    assert extraction.title == "Senior Python AI Engineer"
+    assert extraction.title == "Senior Python QA Automation Engineer"
     assert extraction.company == "Example Labs"
     assert extraction.salary_min == 5000
     assert extraction.salary_max == 7000
     assert "Python" in extraction.tags
+    assert "Pytest" in extraction.tags
     assert extraction.remote is True
 
 

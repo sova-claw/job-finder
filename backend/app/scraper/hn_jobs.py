@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.scraper.common import ScrapedPosting, fetch_html, save_scraped_posting
+from app.services.profile import matches_focus_role
 
 settings = get_settings()
 
@@ -31,6 +32,8 @@ async def scrape_hn_jobs(session: AsyncSession) -> dict[str, int]:
             continue
         raw_text = text_node.get_text("\n", strip=True)
         title = raw_text.split("\n", maxsplit=1)[0][:100]
+        if not matches_focus_role(title, raw_text):
+            continue
         comment_url = build_hn_comment_url(settings.hn_thread_id, comment.get("id"))
         posting = ScrapedPosting(
             url=comment_url,

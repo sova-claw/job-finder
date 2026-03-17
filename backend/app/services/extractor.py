@@ -16,6 +16,19 @@ logger = logging.getLogger(__name__)
 
 TAG_CANONICAL = {
     "python": "Python",
+    "pytest": "Pytest",
+    "unittest": "unittest",
+    "selenium": "Selenium",
+    "playwright": "Playwright",
+    "cypress": "Cypress",
+    "webdriver": "WebDriver",
+    "postman": "Postman",
+    "api testing": "API Testing",
+    "test automation": "Test Automation",
+    "qa automation": "QA Automation",
+    "automation qa": "QA Automation",
+    "sdet": "SDET",
+    "quality assurance": "QA",
     "fastapi": "FastAPI",
     "django": "Django",
     "flask": "Flask",
@@ -39,6 +52,12 @@ TAG_CANONICAL = {
     "gcp": "GCP",
     "kafka": "Kafka",
     "airflow": "Airflow",
+    "jenkins": "Jenkins",
+    "github actions": "GitHub Actions",
+    "gitlab ci": "GitLab CI",
+    "allure": "Allure",
+    "k6": "k6",
+    "jmeter": "JMeter",
 }
 
 DOMAIN_HINTS = {

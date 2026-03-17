@@ -35,12 +35,23 @@ def _collect_profile_tags(job: Job) -> list[str]:
     searchable = " ".join((job.title or "", job.raw_text or "", " ".join(job.tags or []))).lower()
     if "python" in searchable:
         tags.append("7y Python")
-    if "kafka" in searchable:
-        tags.append("Kafka production")
-    if any(token in searchable for token in ("gcp", "cloud", "aws")):
+    if any(
+        token in searchable
+        for token in ("pytest", "unittest", "test automation", "qa automation", "sdet")
+    ):
+        tags.append("Automation framework design")
+    if any(token in searchable for token in ("playwright", "selenium", "webdriver")):
+        tags.append("UI automation depth")
+    if any(
+        token in searchable
+        for token in ("api testing", "postman", "requests", "rest api", "graphql")
+    ):
+        tags.append("API quality engineering")
+    if any(
+        token in searchable
+        for token in ("gcp", "cloud", "aws", "jenkins", "github actions", "gitlab ci")
+    ):
         tags.append("Cloud certified")
-    if any(token in searchable for token in ("ai", "llm", "rag", "agent")):
-        tags.append("AI project (CIS)")
     if not tags:
         tags.append(profile.achievements[0])
     return tags
@@ -50,21 +61,20 @@ def _fallback_letter(job: Job, tone: Tone, tags_used: list[str]) -> str:
     tone_hint = TONE_GUIDANCE[tone]
     role = job.title or "this role"
     company = job.company or "your team"
-    skills = ", ".join(job.tags or ["Python", "FastAPI", "AI"])[:80]
+    skills = ", ".join(job.tags or ["Python", "Pytest", "API Testing"])[:90]
     paragraph_1 = (
-        "I am a senior engineering professional moving into AI-focused backend roles, "
-        f"and {role} at {company} matches the work I am already shipping in "
-        f"Python-based systems. {tone_hint}"
+        f"{role} at {company} matches the work I already do as a senior QA automation engineer "
+        f"building Python-based quality systems for product teams. {tone_hint}"
     )
     paragraph_2 = (
         f"My strongest overlap is in {skills}. I have hands-on production "
-        "experience building backend automation and data workflows, and I am "
-        "actively deepening applied AI capabilities through CIS and related "
+        "experience building automation frameworks, API validation flows, and release "
+        "quality gates, and I am actively sharpening those workflows through CIS and related "
         f"delivery work. Relevant profile evidence includes {', '.join(tags_used[:3])}."
     )
     paragraph_3 = (
         f"I would value the chance to contribute to {company}, especially where "
-        "reliable Python systems and AI features meet real product outcomes. "
+        "reliable Python automation and test engineering support real product outcomes. "
         "If useful, I can walk through how I would approach the "
         f"role priorities in a first conversation."
     )

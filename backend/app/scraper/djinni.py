@@ -12,8 +12,9 @@ from app.scraper.common import (
     parse_posted_at,
     save_scraped_posting,
 )
+from app.services.profile import matches_focus_role
 
-DJINNI_URL = "https://djinni.co/jobs/?primary_keyword=Python&keywords=AI"
+DJINNI_URL = "https://djinni.co/jobs/?primary_keyword=QA%20Automation&keywords=Python"
 
 
 def parse_jobposting_scripts(html: str) -> list[tuple[str, str, str, object]]:
@@ -74,6 +75,11 @@ async def scrape_djinni(session: AsyncSession) -> dict[str, int]:
         listings = dedupe_listings(listings)
 
     postings = await collect_listing_payloads(listings, source="Djinni", source_group="Ukraine")
+    postings = [
+        posting
+        for posting in postings
+        if matches_focus_role(posting.title, posting.raw_text)
+    ]
 
     created = 0
     skipped = 0

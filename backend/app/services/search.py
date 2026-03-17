@@ -10,7 +10,7 @@ def build_job_query(
     sort_by: str = "match_score",
     sort_dir: str = "desc",
 ) -> Select[tuple[Job]]:
-    query: Select[tuple[Job]] = select(Job)
+    query: Select[tuple[Job]] = select(Job).where(Job.is_active.is_(True))
     if source_group and source_group != "All":
         query = query.where(Job.source_group == source_group)
 

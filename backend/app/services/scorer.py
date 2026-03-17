@@ -15,31 +15,41 @@ class Weight:
 
 
 WEIGHTS: tuple[Weight, ...] = (
-    Weight("Python", 15, ("python",), 0),
-    Weight("Cloud GCP/AWS", 10, ("gcp", "aws", "cloud"), 0),
-    Weight("Docker", 8, ("docker",), 0),
-    Weight("SQL + Pandas/NumPy", 8, ("sql", "pandas", "numpy"), 0),
-    Weight("English B2+", 7, ("english",), 0),
-    Weight("ETL / data pipelines", 5, ("etl", "pipeline", "airflow", "kafka"), 0),
-    Weight("LLM APIs", 12, ("llm", "anthropic", "openai"), 1),
-    Weight("LangChain / agents", 10, ("langchain", "agent"), 2),
-    Weight("RAG + Vector DB", 10, ("rag", "vector", "pgvector"), 2),
-    Weight("FastAPI production", 7, ("fastapi",), 1),
-    Weight("Production ML (1y+)", 8, ("machine learning", "ml", "model"), 4),
+    Weight("Python automation", 18, ("python",), 0),
+    Weight(
+        "QA automation architecture",
+        18,
+        ("qa automation", "automation qa", "test automation", "sdet", "software engineer in test"),
+        0,
+    ),
+    Weight("Pytest / unittest", 10, ("pytest", "unittest", "nose"), 0),
+    Weight("UI automation", 10, ("selenium", "playwright", "webdriver", "cypress"), 1),
+    Weight("API testing", 12, ("api testing", "postman", "requests", "rest api", "graphql"), 0),
+    Weight(
+        "CI/CD quality gates",
+        8,
+        ("jenkins", "github actions", "gitlab ci", "ci/cd", "pipeline"),
+        1,
+    ),
+    Weight("SQL / data validation", 7, ("sql", "database", "data validation"), 0),
+    Weight("Docker / environments", 5, ("docker", "container", "docker compose"), 0),
+    Weight("Cloud GCP/AWS", 5, ("gcp", "aws", "cloud"), 0),
+    Weight("English B2+", 3, ("english",), 0),
+    Weight("Performance testing", 4, ("performance", "load test", "jmeter", "k6"), 2),
 )
 
 PROFILE_STRENGTH = {
-    "Python": 100,
+    "Python automation": 100,
+    "QA automation architecture": 95,
+    "Pytest / unittest": 90,
+    "UI automation": 82,
+    "API testing": 95,
+    "CI/CD quality gates": 88,
+    "SQL / data validation": 88,
+    "Docker / environments": 100,
     "Cloud GCP/AWS": 100,
-    "Docker": 100,
-    "SQL + Pandas/NumPy": 100,
     "English B2+": 100,
-    "ETL / data pipelines": 100,
-    "LLM APIs": 42,
-    "LangChain / agents": 30,
-    "RAG + Vector DB": 0,
-    "FastAPI production": 57,
-    "Production ML (1y+)": 25,
+    "Performance testing": 35,
 }
 
 

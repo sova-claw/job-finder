@@ -25,8 +25,14 @@ class Settings(BaseSettings):
     anthropic_cover_letter_model: str = "claude-sonnet-4-20250514"
     apify_token: str = ""
     apify_linkedin_actor_id: str = "valig/linkedin-jobs-scraper"
-    apify_linkedin_titles_csv: str = (
-        "Python AI Engineer,ML Engineer,AI Platform Engineer,LLM Engineer"
+    apify_linkedin_titles_csv: str = ",".join(
+        (
+            "Senior QA Automation Engineer",
+            "QA Automation Engineer",
+            "Python QA Engineer",
+            "SDET",
+            "Test Automation Engineer",
+        )
     )
     apify_linkedin_location: str = "Europe"
     apify_linkedin_date_posted: str = "r604800"

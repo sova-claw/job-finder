@@ -3,22 +3,22 @@ from app.services.profile import get_candidate_profile
 from app.services.scorer import score_job
 
 
-def test_score_job_returns_gaps_for_ai_skills() -> None:
+def test_score_job_returns_gaps_for_qa_automation_skills() -> None:
     extraction = JobExtraction(
-        title="AI Engineer",
+        title="Senior QA Automation Engineer",
         company="Example",
         company_type="Product",
         salary_min=6000,
         salary_max=9000,
         requirements_must=[
             "Python",
-            "LangChain",
-            "RAG",
-            "FastAPI",
-            "Production ML",
+            "QA automation",
+            "Pytest",
+            "Playwright",
+            "Performance testing with k6",
         ],
         requirements_nice=["AWS"],
-        tags=["Python", "LangChain", "RAG", "FastAPI", "ML"],
+        tags=["Python", "QA Automation", "Pytest", "Playwright", "k6"],
         domain="FinTech",
         remote=True,
         location="Remote",
@@ -27,8 +27,8 @@ def test_score_job_returns_gaps_for_ai_skills() -> None:
     score, gaps = score_job(extraction, get_candidate_profile())
 
     assert 0 < score <= 100
-    assert any(gap.skill == "LangChain / agents" for gap in gaps)
-    assert any(gap.skill == "RAG + Vector DB" for gap in gaps)
+    assert any(gap.skill == "UI automation" for gap in gaps)
+    assert any(gap.skill == "Performance testing" for gap in gaps)
 
 
 def test_score_job_does_not_award_irrelevant_skill_weight() -> None:

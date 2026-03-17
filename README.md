@@ -1,6 +1,6 @@
 # Career Intelligence System
 
-Career Intelligence System is a self-hosted job intelligence dashboard for AI, Python, and ML roles.
+Career Intelligence System is a self-hosted job intelligence dashboard for Python QA automation and SDET roles.
 
 ## Stack
 
@@ -50,4 +50,11 @@ Expected health response:
 
 ```json
 {"status":"ok","db":"connected"}
+```
+
+## Refresh local data
+
+```bash
+cd backend
+uv run python scripts/rescore_jobs.py
 ```

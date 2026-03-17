@@ -3,12 +3,36 @@ import json
 
 from app.schemas.profile import CandidateProfile, Certification
 
+ROLE_FOCUS_KEYWORDS = (
+    "qa automation",
+    "automation qa",
+    "test automation",
+    "sdet",
+    "software engineer in test",
+    "qa engineer",
+    "quality engineer",
+    "automation engineer",
+    "aqa",
+)
+
+PYTHON_QA_STACK_KEYWORDS = (
+    "python",
+    "pytest",
+    "playwright",
+    "selenium",
+    "webdriver",
+    "api testing",
+    "postman",
+    "requests",
+    "rest api",
+)
+
 PROFILE = CandidateProfile(
     name="Nazar Khimin",
-    title="Senior SDET transitioning to AI Engineer",
+    title="Senior QA Automation Engineer (Python)",
     summary=(
-        "Senior automation and platform engineer moving into AI/Python roles with strong backend, "
-        "cloud, data, and delivery experience."
+        "Senior QA automation engineer focused on Python-based test platforms, API quality, "
+        "CI/CD quality gates, and scalable automation for product teams."
     ),
     location="Kyiv, Ukraine",
     english_level="B2+",
@@ -17,31 +41,30 @@ PROFILE = CandidateProfile(
         "cloud": 5,
         "docker": 6,
         "sql": 6,
-        "etl": 4,
-        "fastapi": 2,
-        "llm": 1,
+        "api_testing": 6,
+        "ui_automation": 5,
+        "ci_cd": 6,
+        "playwright": 2,
     },
     strong_skills=[
         "Python",
+        "Pytest",
+        "API Testing",
+        "Test Automation",
+        "Selenium",
+        "Playwright",
+        "CI/CD",
         "Docker",
         "SQL",
-        "Pandas",
-        "NumPy",
-        "Kafka",
         "GCP",
         "AWS",
-        "ETL",
-        "Testing",
-        "FastAPI",
     ],
     working_skills=[
-        "LangChain",
-        "Agents",
-        "RAG",
-        "pgvector",
-        "Anthropic API",
-        "OpenAI API",
-        "MLOps",
+        "Performance Testing",
+        "k6",
+        "Contract Testing",
+        "GitHub Actions",
+        "Allure",
     ],
     certifications=[
         Certification(name="Professional Cloud Developer", provider="Google Cloud"),
@@ -49,25 +72,26 @@ PROFILE = CandidateProfile(
     ],
     current_projects=[
         "Career Intelligence System",
-        "AI-assisted automation tooling",
+        "Python QA automation accelerators",
     ],
     target_roles=[
-        "Python AI Engineer",
-        "ML Engineer",
-        "AI Platform Engineer",
+        "Senior QA Automation Engineer",
+        "Python QA Engineer",
+        "SDET",
+        "Test Automation Engineer",
     ],
     preferred_domains=["FinTech", "HealthTech", "Developer Tools", "EdTech"],
     achievements=[
-        "Built and maintained automation platforms used in production environments.",
-        "Delivered large-scale test and backend systems for product teams.",
-        "Shipping CIS as a self-hosted AI job intelligence platform.",
+        "Built and maintained Python automation platforms used in production delivery pipelines.",
+        "Delivered API, UI, and integration test systems for product engineering teams.",
+        "Shipping CIS as a self-hosted QA-focused job intelligence platform.",
     ],
     learning_plan={
-        "LLM APIs": 1,
-        "LangChain / agents": 2,
-        "RAG + Vector DB": 2,
-        "FastAPI production": 1,
-        "Production ML (1y+)": 4,
+        "Playwright at scale": 1,
+        "Performance testing (k6)": 2,
+        "Contract testing": 2,
+        "Advanced CI quality gates": 1,
+        "Security testing depth": 3,
     },
 )
 
@@ -80,3 +104,18 @@ def get_profile_hash() -> str:
     payload = PROFILE.model_dump(mode="json")
     serialized = json.dumps(payload, sort_keys=True)
     return hashlib.md5(serialized.encode("utf-8"), usedforsecurity=False).hexdigest()
+
+
+def has_role_focus_signal(text: str) -> bool:
+    lowered = text.lower()
+    return any(keyword in lowered for keyword in ROLE_FOCUS_KEYWORDS)
+
+
+def has_python_qa_stack_signal(text: str) -> bool:
+    lowered = text.lower()
+    return any(keyword in lowered for keyword in PYTHON_QA_STACK_KEYWORDS)
+
+
+def matches_focus_role(title: str, raw_text: str = "") -> bool:
+    searchable = f"{title}\n{raw_text}".lower()
+    return has_role_focus_signal(searchable) and has_python_qa_stack_signal(searchable)

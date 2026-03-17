@@ -10,8 +10,9 @@ from app.scraper.common import (
     render_html,
     save_scraped_posting,
 )
+from app.services.profile import matches_focus_role
 
-DOU_URL = "https://jobs.dou.ua/vacancies/?category=AI%2FML"
+DOU_URL = "https://jobs.dou.ua/vacancies/?category=QA&search=python%20automation"
 
 
 async def scrape_dou(session: AsyncSession) -> dict[str, int]:
@@ -34,6 +35,11 @@ async def scrape_dou(session: AsyncSession) -> dict[str, int]:
 
     listings = dedupe_listings(listings)
     postings = await collect_listing_payloads(listings, source="DOU", source_group="Ukraine")
+    postings = [
+        posting
+        for posting in postings
+        if matches_focus_role(posting.title, posting.raw_text)
+    ]
 
     created = 0
     skipped = 0

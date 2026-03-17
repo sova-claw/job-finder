@@ -5,17 +5,23 @@ from app.schemas.job import MarketInsight
 
 
 def build_market_insight(
-    rows: Iterable[tuple[list[str] | None, int | None, int | None, bool | None]],
+    rows: Iterable[
+        tuple[list[str] | None, list[str] | None, int | None, int | None, bool | None]
+    ],
 ) -> MarketInsight:
     skill_counter: Counter[str] = Counter()
     salary_counter: Counter[str] = Counter()
     remote_count = 0
     total = 0
 
-    for requirements_must, salary_min, salary_max, remote in rows:
+    for requirements_must, tags, salary_min, salary_max, remote in rows:
         total += 1
-        for requirement in requirements_must or []:
-            skill_counter[requirement] += 1
+        if tags:
+            for tag in tags:
+                skill_counter[tag] += 1
+        else:
+            for requirement in requirements_must or []:
+                skill_counter[requirement] += 1
         if remote:
             remote_count += 1
 

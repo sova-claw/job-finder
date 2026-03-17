@@ -4,7 +4,7 @@
 
 Local scrapers:
 - DOU via Playwright-rendered listings and direct detail-page fetches
-- Djinni via Playwright-rendered listings and direct detail-page fetches
+- Djinni via direct HTML fetches and JSON-LD parsing
 - BigCo career pages via direct HTML fetches
 - Hacker News Who's Hiring via thread comment scraping
 
@@ -20,6 +20,14 @@ Disabled by default:
 - BigCo pages are custom enough that a lightweight local fetch is still cheaper than a third-party actor.
 - LinkedIn is the source most likely to break under local scraping, so using Apify there gives the best time savings.
 - HN is simple enough to keep fully local.
+
+## Current role focus
+
+- Candidate target: `Python QA Automation Engineer / SDET`
+- DOU query: `category=QA&search=python automation`
+- Djinni query: `primary_keyword=QA Automation&keywords=Python`
+- LinkedIn Apify titles: `Senior QA Automation Engineer`, `QA Automation Engineer`, `Python QA Engineer`, `SDET`, `Test Automation Engineer`
+- Relevance gate: only jobs with both QA automation role signal and Python/testing stack signal remain active
 
 ## Reliability priorities
 

@@ -2,6 +2,7 @@ from app.scraper.apify_linkedin import build_linkedin_run_inputs, posting_from_l
 from app.scraper.common import dedupe_listings, parse_posted_at
 from app.scraper.djinni import parse_jobposting_scripts
 from app.scraper.hn_jobs import build_hn_comment_url
+from app.services.profile import matches_focus_role
 
 
 def test_parse_posted_at_supports_iso_dates() -> None:
@@ -28,7 +29,7 @@ def test_dedupe_listings_preserves_first_occurrence() -> None:
 
 def test_build_linkedin_run_inputs_generates_one_payload_per_title() -> None:
     payloads = build_linkedin_run_inputs(
-        titles_csv="Python AI Engineer,ML Engineer",
+        titles_csv="QA Automation Engineer,SDET",
         location="Europe",
         date_posted="r604800",
         limit_per_title=15,
@@ -38,7 +39,7 @@ def test_build_linkedin_run_inputs_generates_one_payload_per_title() -> None:
 
     assert payloads == [
         {
-            "title": "Python AI Engineer",
+            "title": "QA Automation Engineer",
             "location": "Europe",
             "datePosted": "r604800",
             "companyName": ["OpenAI", "Anthropic"],
@@ -46,7 +47,7 @@ def test_build_linkedin_run_inputs_generates_one_payload_per_title() -> None:
             "maxItems": 15,
         },
         {
-            "title": "ML Engineer",
+            "title": "SDET",
             "location": "Europe",
             "datePosted": "r604800",
             "companyName": ["OpenAI", "Anthropic"],
@@ -60,9 +61,9 @@ def test_posting_from_linkedin_item_maps_job_payload() -> None:
     posting = posting_from_linkedin_item(
         {
             "jobUrl": "https://www.linkedin.com/jobs/view/123",
-            "title": "Senior ML Engineer",
+            "title": "Senior QA Automation Engineer",
             "companyName": "Example AI",
-            "descriptionText": "Python, FastAPI, RAG",
+            "descriptionText": "Python, pytest, playwright, API testing",
             "postedDate": "2026-03-16",
         }
     )
@@ -74,6 +75,11 @@ def test_posting_from_linkedin_item_maps_job_payload() -> None:
     assert posting.source_group == "Global"
     assert posting.posted_at is not None
     assert posting.posted_at.isoformat() == "2026-03-16T00:00:00+00:00"
+
+
+def test_matches_focus_role_rejects_manual_qa_without_python_automation() -> None:
+    assert matches_focus_role("Senior QA Automation Engineer", "Python pytest playwright")
+    assert not matches_focus_role("Manual QA Engineer", "Regression testing, Jira, test cases")
 
 
 def test_build_hn_comment_url_uses_comment_anchor() -> None:

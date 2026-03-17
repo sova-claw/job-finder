@@ -15,6 +15,7 @@ from app.scraper.common import (
     parse_posted_at,
     save_scraped_posting,
 )
+from app.services.profile import has_role_focus_signal, matches_focus_role
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +57,18 @@ async def scrape_bigco(session: AsyncSession) -> dict[str, int]:
             job_url = urljoin(url, href)
             title = link.get_text(" ", strip=True) or f"{company} role"
             container_text = link.parent.get_text(" ", strip=True) if link.parent else ""
+            if not has_role_focus_signal(f"{title}\n{container_text}"):
+                continue
             posted_at = parse_posted_at(container_text)
             listings.append((job_url, title, company, posted_at))
 
         listings = dedupe_listings(listings)
         postings = await collect_listing_payloads(listings, source=company, source_group="BigCo")
+        postings = [
+            posting
+            for posting in postings
+            if matches_focus_role(posting.title, posting.raw_text)
+        ]
         found += len(listings)
         for posting in postings:
             _job, is_new = await save_scraped_posting(session, posting)

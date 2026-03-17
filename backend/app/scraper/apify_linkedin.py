@@ -13,6 +13,7 @@ from app.scraper.common import (
     save_scraped_posting,
     split_csv,
 )
+from app.services.profile import matches_focus_role
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -67,18 +68,21 @@ def posting_from_linkedin_item(item: dict[str, Any]) -> ScrapedPosting | None:
     if not url:
         return None
 
+    title = item.get("title") or item.get("position") or "LinkedIn role"
     raw_text = (
         item.get("descriptionText")
         or item.get("description")
         or item.get("jobDescription")
         or ""
     )
+    if not matches_focus_role(title, raw_text):
+        return None
     posted_at = parse_posted_at(item.get("postedDate") or item.get("postedTimeAgo"))
     return ScrapedPosting(
         url=url,
         source="LinkedIn",
         source_group="Global",
-        title=item.get("title") or item.get("position") or "LinkedIn role",
+        title=title,
         company=item.get("companyName") or item.get("company") or "LinkedIn",
         posted_at=posted_at,
         raw_text=raw_text,

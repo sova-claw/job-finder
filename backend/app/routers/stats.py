@@ -20,8 +20,9 @@ async def get_stats(session: AsyncSession = Depends(get_session)) -> JobStats:
         select(
             func.count(Job.id),
             func.count(Job.id).filter(Job.is_active.is_(True)),
-            func.avg(Job.match_score),
+            func.avg(Job.match_score).filter(Job.is_active.is_(True)),
             func.count(Job.id).filter(
+                Job.is_active.is_(True),
                 func.coalesce(Job.salary_max, Job.salary_min, 0) >= 5_000
             ),
         )
@@ -29,11 +30,18 @@ async def get_stats(session: AsyncSession = Depends(get_session)) -> JobStats:
     total_jobs, active_jobs, avg_score, high_pay_count = summary.one()
 
     source_rows = await session.execute(
-        select(Job.source_group, func.count(Job.id)).group_by(Job.source_group)
+        select(Job.source_group, func.count(Job.id))
+        .where(Job.is_active.is_(True))
+        .group_by(Job.source_group)
     )
     source_breakdown = {source_group: count for source_group, count in source_rows}
 
-    gaps_rows = await session.execute(select(Job.gaps).where(Job.gaps.is_not(None)))
+    gaps_rows = await session.execute(
+        select(Job.gaps).where(
+            Job.is_active.is_(True),
+            Job.gaps.is_not(None),
+        )
+    )
     gap_counter: Counter[str] = Counter()
     for gaps in gaps_rows.scalars():
         for gap in gaps or []:
@@ -59,6 +67,8 @@ async def get_profile() -> CandidateProfile:
 @router.get("/market", response_model=MarketInsight)
 async def get_market_insight(session: AsyncSession = Depends(get_session)) -> MarketInsight:
     rows = await session.execute(
-        select(Job.requirements_must, Job.salary_min, Job.salary_max, Job.remote)
+        select(Job.requirements_must, Job.tags, Job.salary_min, Job.salary_max, Job.remote).where(
+            Job.is_active.is_(True)
+        )
     )
     return build_market_insight(rows.all())
