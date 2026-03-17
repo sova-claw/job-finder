@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.scraper.common import (
     collect_listing_payloads,
+    dedupe_listings,
     parse_posted_at,
     render_html,
     save_scraped_posting,
@@ -31,6 +32,7 @@ async def scrape_dou(session: AsyncSession) -> dict[str, int]:
         posted_at = parse_posted_at(date_node.get_text(" ", strip=True) if date_node else None)
         listings.append((url, title, company, posted_at))
 
+    listings = dedupe_listings(listings)
     postings = await collect_listing_payloads(listings, source="DOU", source_group="Ukraine")
 
     created = 0

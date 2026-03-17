@@ -58,7 +58,17 @@ def build_job_id(company: str, title: str, posted_at: datetime | None, url: str)
 def parse_posted_at(value: str | None) -> datetime | None:
     if not value:
         return None
-    normalized = re.sub(r"\s+", " ", value.strip().lower())
+    raw_value = re.sub(r"\s+", " ", value.strip())
+    iso_candidate = raw_value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(iso_candidate)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+    except ValueError:
+        pass
+
+    normalized = raw_value.lower()
     now = datetime.now(UTC)
 
     if "today" in normalized:
@@ -111,14 +121,39 @@ async def fetch_text(url: str) -> str:
 
 async def render_html(url: str, wait_for: str) -> str:
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True)
+        browser = await playwright.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
         page = await browser.new_page(user_agent=settings.scraper_user_agent)
         try:
-            await page.goto(url, wait_until="networkidle")
+            await page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=int(settings.request_timeout_seconds * 1000),
+            )
             await page.wait_for_selector(wait_for, timeout=20_000)
             return await page.content()
         finally:
             await browser.close()
+
+
+def split_csv(value: str) -> list[str]:
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def dedupe_listings(
+    listings: list[tuple[str, str, str, datetime | None]],
+) -> list[tuple[str, str, str, datetime | None]]:
+    seen_urls: set[str] = set()
+    deduped: list[tuple[str, str, str, datetime | None]] = []
+    for listing in listings:
+        url = listing[0]
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        deduped.append(listing)
+    return deduped
 
 
 async def collect_listing_payloads(

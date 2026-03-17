@@ -17,6 +17,7 @@ dependencies = [
   "httpx>=0.28.0",
   "beautifulsoup4>=4.12.3",
   "python-dotenv>=1.0.1",
+  "apify-client>=2.5.0",
 ]
 
 [dependency-groups]

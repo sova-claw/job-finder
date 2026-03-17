@@ -11,6 +11,11 @@ from app.scraper.common import ScrapedPosting, fetch_html, save_scraped_posting
 settings = get_settings()
 
 
+def build_hn_comment_url(thread_id: str, comment_id: str | None) -> str:
+    base = f"https://news.ycombinator.com/item?id={thread_id}"
+    return f"{base}#{comment_id}" if comment_id else base
+
+
 async def scrape_hn_jobs(session: AsyncSession) -> dict[str, int]:
     hn_url = f"https://news.ycombinator.com/item?id={settings.hn_thread_id}"
     html = await fetch_html(hn_url)
@@ -26,8 +31,9 @@ async def scrape_hn_jobs(session: AsyncSession) -> dict[str, int]:
             continue
         raw_text = text_node.get_text("\n", strip=True)
         title = raw_text.split("\n", maxsplit=1)[0][:100]
+        comment_url = build_hn_comment_url(settings.hn_thread_id, comment.get("id"))
         posting = ScrapedPosting(
-            url=hn_url,
+            url=comment_url,
             source="HN",
             source_group="Startups",
             title=title or "HN role",

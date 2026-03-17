@@ -9,6 +9,12 @@ Career Intelligence System is a self-hosted job intelligence dashboard for AI, P
 - Database: PostgreSQL 17 with `pgvector`
 - Infra: Docker Compose, Caddy
 
+## Sources
+
+- Local scrapers: DOU, Djinni, BigCo, Hacker News
+- Hosted scraper: LinkedIn via Apify
+- Scraper plan and source notes: `SCRAPERS.md`
+
 ## Local backend workflow
 
 ```bash

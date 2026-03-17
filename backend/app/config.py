@@ -24,6 +24,19 @@ class Settings(BaseSettings):
     anthropic_extractor_model: str = "claude-3-5-haiku-latest"
     anthropic_cover_letter_model: str = "claude-sonnet-4-20250514"
     apify_token: str = ""
+    apify_linkedin_actor_id: str = "valig/linkedin-jobs-scraper"
+    apify_linkedin_titles_csv: str = (
+        "Python AI Engineer,ML Engineer,AI Platform Engineer,LLM Engineer"
+    )
+    apify_linkedin_location: str = "Europe"
+    apify_linkedin_date_posted: str = "r604800"
+    apify_linkedin_limit_per_title: int = 20
+    apify_linkedin_company_names_csv: str = ""
+    apify_linkedin_contract_types_csv: str = ""
+    apify_linkedin_experience_levels_csv: str = ""
+    apify_linkedin_remote_codes_csv: str = ""
+    apify_linkedin_skip_job_ids_csv: str = ""
+    apify_actor_timeout_seconds: int = 240
     cf_tunnel_token: str = ""
     hn_thread_id: str = "42306918"
 

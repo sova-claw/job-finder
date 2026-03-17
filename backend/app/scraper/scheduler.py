@@ -7,7 +7,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import get_settings
 from app.database import SessionLocal
 from app.scraper.apify_linkedin import scrape_apify_linkedin
-from app.scraper.apify_yc import scrape_apify_yc
 from app.scraper.bigco import scrape_bigco
 from app.scraper.djinni import scrape_djinni
 from app.scraper.dou import scrape_dou
@@ -54,14 +53,6 @@ class SchedulerService:
             except Exception as exc:  # noqa: BLE001
                 logger.exception("LinkedIn scrape failed: %s", exc)
 
-    async def run_yc_job(self) -> None:
-        async with SessionLocal() as session:
-            try:
-                summary = await scrape_apify_yc(session)
-                logger.info("scrape complete", extra=summary)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("YC scrape failed: %s", exc)
-
     async def run_hn_job(self) -> None:
         async with SessionLocal() as session:
             try:
@@ -99,13 +90,6 @@ class SchedulerService:
             "interval",
             days=1,
             id="scrape-linkedin",
-            replace_existing=True,
-        )
-        self.scheduler.add_job(
-            self.run_yc_job,
-            "interval",
-            days=1,
-            id="scrape-yc",
             replace_existing=True,
         )
         self.scheduler.add_job(
