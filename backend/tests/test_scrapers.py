@@ -1,5 +1,6 @@
 from app.scraper.apify_linkedin import build_linkedin_run_inputs, posting_from_linkedin_item
 from app.scraper.common import dedupe_listings, parse_posted_at
+from app.scraper.djinni import parse_jobposting_scripts
 from app.scraper.hn_jobs import build_hn_comment_url
 
 
@@ -80,3 +81,34 @@ def test_build_hn_comment_url_uses_comment_anchor() -> None:
         build_hn_comment_url("42306918", "4321")
         == "https://news.ycombinator.com/item?id=42306918#4321"
     )
+
+
+def test_parse_jobposting_scripts_reads_djinni_json_ld() -> None:
+    html = """
+    <html>
+      <head>
+        <script type="application/ld+json">
+          [
+            {
+              "@context": "https://schema.org/",
+              "@type": "JobPosting",
+              "title": "Senior Python Engineer",
+              "url": "https://djinni.co/jobs/801646-senior-python-engineer/",
+              "datePosted": "2026-03-17T12:34:20.842738",
+              "hiringOrganization": {"@type": "Organization", "name": "GlobalLogic"}
+            }
+          ]
+        </script>
+      </head>
+    </html>
+    """
+
+    listings = parse_jobposting_scripts(html)
+
+    assert len(listings) == 1
+    url, title, company, posted_at = listings[0]
+    assert url == "https://djinni.co/jobs/801646-senior-python-engineer/"
+    assert title == "Senior Python Engineer"
+    assert company == "GlobalLogic"
+    assert posted_at is not None
+    assert posted_at.isoformat() == "2026-03-17T12:34:20.842738+00:00"
