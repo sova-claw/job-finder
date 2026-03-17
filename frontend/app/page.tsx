@@ -28,6 +28,13 @@ import { TopBar } from "@/components/TopBar";
 import { UrlAnalyzer } from "@/components/UrlAnalyzer";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger
+} from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { fetchJob, fetchJobs, fetchMarketInsight, fetchProfile, fetchStats } from "@/lib/api";
 import { isHighPay } from "@/lib/jobs";
 import { JobDetail, SourceGroup } from "@/lib/types";
@@ -189,18 +196,18 @@ export default function Page() {
                 onChange={setSourceGroup}
               />
 
-              <label className="relative block w-full">
+              <div className="relative block w-full">
                 <Search
                   size={15}
                   className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
                 />
-                <input
+                <Input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search role, company, or text"
-                  className="h-10 w-full rounded-full border border-white/10 bg-white/5 pl-10 pr-4 text-sm outline-none focus:border-[var(--accent)]"
+                  className="pl-10"
                 />
-              </label>
+              </div>
 
               <UrlAnalyzer onAnalyzed={handleAnalyzed} />
             </div>
@@ -223,7 +230,9 @@ export default function Page() {
                 </div>
               </div>
 
-              <div className="mt-4">
+              <Separator className="my-4 bg-white/8" />
+
+              <div>
                 <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Strongest skills</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {strongSkills.length ? (
@@ -307,80 +316,81 @@ export default function Page() {
               isLoading={jobsQuery.isPending}
             />
 
-            <Card className="rounded-[24px] overflow-hidden">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between px-4 py-4 text-left"
-                onClick={() => setIsMarketOpen((current) => !current)}
-              >
-                <div className="flex items-start gap-3">
-                  <span className="rounded-full border border-white/10 bg-white/6 p-2 text-[var(--accent)]">
-                    <Radar size={15} />
-                  </span>
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--text-muted)]">Market snapshot</p>
-                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                      Secondary analytics: source mix, hot skills, and salary bands.
-                    </p>
-                  </div>
-                </div>
-                <span className="inline-flex h-8 items-center justify-center rounded-full border border-white/10 bg-white/6 px-3 text-[var(--text-secondary)]">
-                  {isMarketOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                </span>
-              </button>
-
-              {isMarketOpen ? (
-                <div className="grid gap-4 border-t border-white/8 p-4 xl:grid-cols-3">
-                  <div className="rounded-[20px] border border-white/8 bg-black/10 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Source mix</p>
-                    <div className="mt-4 h-44">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData}>
-                          <XAxis dataKey="name" stroke="#6c7c91" tickLine={false} axisLine={false} />
-                          <Tooltip contentStyle={TOOLTIP_STYLE} />
-                          <Bar dataKey="count" radius={[8, 8, 0, 0]} fill="var(--accent)" />
-                        </BarChart>
-                      </ResponsiveContainer>
+            <Collapsible open={isMarketOpen} onOpenChange={setIsMarketOpen}>
+              <Card className="overflow-hidden rounded-[24px]">
+                <CollapsibleTrigger asChild>
+                  <button type="button" className="flex w-full items-center justify-between px-4 py-4 text-left">
+                    <div className="flex items-start gap-3">
+                      <span className="rounded-full border border-white/10 bg-white/6 p-2 text-[var(--accent)]">
+                        <Radar size={15} />
+                      </span>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--text-muted)]">Market snapshot</p>
+                      <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                        Secondary analytics: source mix, hot skills, and salary bands.
+                      </p>
                     </div>
                   </div>
+                    <span className="inline-flex size-8 items-center justify-center rounded-full text-[var(--text-secondary)]">
+                      {isMarketOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </span>
+                  </button>
+                </CollapsibleTrigger>
 
-                  <div className="rounded-[20px] border border-white/8 bg-black/10 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Top skills</p>
-                    <div className="mt-4 h-44">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={skillData} layout="vertical">
-                          <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
-                          <XAxis type="number" stroke="#6c7c91" tickLine={false} axisLine={false} />
-                          <YAxis
-                            type="category"
-                            dataKey="skill"
-                            width={110}
-                            stroke="#6c7c91"
-                            tickLine={false}
-                            axisLine={false}
-                          />
-                          <Tooltip contentStyle={TOOLTIP_STYLE} />
-                          <Bar dataKey="count" radius={[0, 8, 8, 0]} fill="var(--signal-green)" />
-                        </BarChart>
-                      </ResponsiveContainer>
+                <CollapsibleContent>
+                  <Separator className="bg-white/8" />
+                  <div className="grid gap-4 p-4 xl:grid-cols-3">
+                    <div className="rounded-[20px] border border-white/8 bg-black/10 p-4">
+                      <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Source mix</p>
+                      <div className="mt-4 h-44">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={chartData}>
+                            <XAxis dataKey="name" stroke="#6c7c91" tickLine={false} axisLine={false} />
+                            <Tooltip contentStyle={TOOLTIP_STYLE} />
+                            <Bar dataKey="count" radius={[8, 8, 0, 0]} fill="var(--accent)" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[20px] border border-white/8 bg-black/10 p-4">
+                      <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Top skills</p>
+                      <div className="mt-4 h-44">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={skillData} layout="vertical">
+                            <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                            <XAxis type="number" stroke="#6c7c91" tickLine={false} axisLine={false} />
+                            <YAxis
+                              type="category"
+                              dataKey="skill"
+                              width={110}
+                              stroke="#6c7c91"
+                              tickLine={false}
+                              axisLine={false}
+                            />
+                            <Tooltip contentStyle={TOOLTIP_STYLE} />
+                            <Bar dataKey="count" radius={[0, 8, 8, 0]} fill="var(--signal-green)" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[20px] border border-white/8 bg-black/10 p-4">
+                      <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Salary bands</p>
+                      <div className="mt-4 h-44">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={salaryData}>
+                            <XAxis dataKey="band" stroke="#6c7c91" tickLine={false} axisLine={false} />
+                            <Tooltip contentStyle={TOOLTIP_STYLE} />
+                            <Bar dataKey="count" radius={[8, 8, 0, 0]} fill="var(--signal-amber)" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
                   </div>
-
-                  <div className="rounded-[20px] border border-white/8 bg-black/10 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">Salary bands</p>
-                    <div className="mt-4 h-44">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={salaryData}>
-                          <XAxis dataKey="band" stroke="#6c7c91" tickLine={false} axisLine={false} />
-                          <Tooltip contentStyle={TOOLTIP_STYLE} />
-                          <Bar dataKey="count" radius={[8, 8, 0, 0]} fill="var(--signal-amber)" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </Card>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
           </div>
 
           <DetailPanel job={selectedJob} onClose={() => setSelectedJobId(null)} />
