@@ -6,6 +6,7 @@ from app.agent_bridge.service import (
     build_planner_prompt,
     build_thread_key,
     is_planner_event,
+    normalize_event_payload,
     planner_review_suffix,
     render_transcript,
     should_trigger_executor,
@@ -160,3 +161,24 @@ def test_should_trigger_executor_for_planner_handoff_and_human_follow_up() -> No
         codex_user_id="",
         history=history,
     ) is False
+
+
+def test_normalize_event_payload_unwraps_thread_subtypes() -> None:
+    event = {
+        "type": "message",
+        "subtype": "message_changed",
+        "channel": "C123",
+        "message": {
+            "ts": "1.23",
+            "thread_ts": "1.00",
+            "text": "<@UCODEX> status?",
+            "user": "UUSER",
+        },
+    }
+
+    normalized = normalize_event_payload(event)
+
+    assert normalized is not None
+    assert normalized["channel"] == "C123"
+    assert normalized["thread_ts"] == "1.00"
+    assert normalized["text"] == "<@UCODEX> status?"

@@ -177,6 +177,19 @@ def thread_has_executor_activity(messages: list[SessionMessage]) -> bool:
     return any(message.role == "executor" for message in messages)
 
 
+def normalize_event_payload(event: dict) -> dict | None:
+    subtype = event.get("subtype")
+    if subtype in {"message_changed", "message_replied"}:
+        nested = event.get("message") or {}
+        if not isinstance(nested, dict):
+            return None
+        merged = dict(nested)
+        merged.setdefault("channel", event.get("channel"))
+        merged.setdefault("hidden", event.get("hidden"))
+        return merged
+    return event
+
+
 def should_trigger_executor(
     *,
     planner_event: bool,
@@ -219,6 +232,11 @@ class SlackAgentBridge:
             await self._handle_event(body.get("event", {}), client=client, logger=logger)
 
     async def _handle_event(self, event: dict, *, client: AsyncWebClient, logger) -> None:
+        normalized = normalize_event_payload(event)
+        if normalized is None:
+            return
+        event = normalized
+
         if self.settings.bridge_mode == "codex-follower":
             await self._handle_codex_follower_event(event, client=client, logger=logger)
             return
