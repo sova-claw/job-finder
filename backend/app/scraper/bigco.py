@@ -19,7 +19,7 @@ from app.services.profile import has_role_focus_signal, matches_focus_role
 
 logger = logging.getLogger(__name__)
 
-COMPANIES = {
+COMPANIES_UA = {
     "Grammarly": "https://www.grammarly.com/jobs",
     "Preply": "https://preply.com/en/jobs",
     "Restream": "https://restream.io/careers",
@@ -30,13 +30,27 @@ COMPANIES = {
     "Wise": "https://wise.jobs/",
 }
 
+COMPANIES_TARGET = {
+    "JFrog": "https://jfrog.com/careers/",
+    "Tipalti": "https://tipalti.com/careers/",
+    "monday.com": "https://monday.com/jobs/",
+    # The live Wix careers site is JS-rendered and may need Playwright fallback.
+    "Wix": "https://www.wix.com/jobs",
+    "Forter": "https://forter.com/careers/",
+    "Paddle": "https://paddle.com/careers/",
+    "Sentry": "https://sentry.io/careers/",
+    "Mercury": "https://mercury.com/jobs",
+    "Rapyd": "https://www.rapyd.net/company/careers/",
+    "Brex": "https://www.brex.com/careers",
+}
+
 
 async def scrape_bigco(session: AsyncSession) -> dict[str, int]:
     found = 0
     created = 0
     skipped = 0
 
-    for company, url in COMPANIES.items():
+    for company, url in COMPANIES_TARGET.items():
         try:
             html = await fetch_html(url)
         except httpx.HTTPError as exc:

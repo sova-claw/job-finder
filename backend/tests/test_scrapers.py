@@ -1,4 +1,5 @@
 from app.scraper.apify_linkedin import build_linkedin_run_inputs, posting_from_linkedin_item
+from app.scraper.bigco import COMPANIES_TARGET
 from app.scraper.common import dedupe_listings, parse_posted_at
 from app.scraper.djinni import parse_jobposting_scripts
 from app.scraper.hn_jobs import build_hn_comment_url
@@ -24,6 +25,21 @@ def test_dedupe_listings_preserves_first_occurrence() -> None:
     assert deduped == [
         ("https://example.com/jobs/1", "Role A", "Acme", None),
         ("https://example.com/jobs/2", "Role B", "Beta", None),
+    ]
+
+
+def test_bigco_targets_cover_planner_company_list() -> None:
+    assert list(COMPANIES_TARGET) == [
+        "JFrog",
+        "Tipalti",
+        "monday.com",
+        "Wix",
+        "Forter",
+        "Paddle",
+        "Sentry",
+        "Mercury",
+        "Rapyd",
+        "Brex",
     ]
 
 
