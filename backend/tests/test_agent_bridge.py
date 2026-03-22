@@ -1,9 +1,12 @@
 from pathlib import Path
 
+from app.agent_bridge.config import BridgeSettings
 from app.agent_bridge.service import (
     build_executor_prompt,
     build_planner_prompt,
     build_thread_key,
+    is_planner_event,
+    planner_review_suffix,
     render_transcript,
 )
 from app.agent_bridge.session_store import SessionMessage, ThreadSessionStore
@@ -51,3 +54,25 @@ def test_prompt_builders_include_transcript() -> None:
     assert "Build the careers scraper." in transcript
     assert "Claude Code acting as the planner" in planner_prompt
     assert "Planner handoff" in executor_prompt
+
+
+def test_is_planner_event_matches_slack_plugin_shapes() -> None:
+    settings = BridgeSettings(
+        planner_bot_user_id="UCLAUDE",
+        planner_bot_id="BCLAUDE",
+        planner_display_name="Claude",
+    )
+
+    assert is_planner_event({"user": "UCLAUDE"}, settings) is True
+    assert is_planner_event({"bot_id": "BCLAUDE"}, settings) is True
+    assert is_planner_event({"username": "Claude"}, settings) is True
+    assert is_planner_event({"bot_profile": {"name": "Claude"}}, settings) is True
+    assert is_planner_event({"user": "UOTHER"}, settings) is False
+
+
+def test_planner_review_suffix_prefers_real_mention() -> None:
+    settings = BridgeSettings(planner_bot_user_id="UCLAUDE")
+    assert planner_review_suffix(settings) == "<@UCLAUDE> please review and plan the next step."
+
+    fallback = BridgeSettings()
+    assert planner_review_suffix(fallback) == "@Claude please review and plan the next step."

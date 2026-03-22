@@ -119,6 +119,28 @@ async def post_long_message(
         await client.chat_postMessage(channel=channel, thread_ts=thread_ts, text=chunk)
 
 
+def is_planner_event(event: dict, settings: BridgeSettings) -> bool:
+    display_name = settings.planner_display_name.strip().lower()
+    username = str(event.get("username", "")).strip().lower()
+    bot_name = str(event.get("bot_profile", {}).get("name", "")).strip().lower()
+    user_id = str(event.get("user", "")).strip()
+    bot_id = str(event.get("bot_id", "")).strip()
+    return any(
+        [
+            settings.planner_bot_user_id and user_id == settings.planner_bot_user_id,
+            settings.planner_bot_id and bot_id == settings.planner_bot_id,
+            display_name and username == display_name,
+            display_name and bot_name == display_name,
+        ]
+    )
+
+
+def planner_review_suffix(settings: BridgeSettings) -> str:
+    if settings.planner_bot_user_id:
+        return f"<@{settings.planner_bot_user_id}> please review and plan the next step."
+    return "@Claude please review and plan the next step."
+
+
 class SlackAgentBridge:
     def __init__(self, settings: BridgeSettings) -> None:
         self.settings = settings
@@ -133,13 +155,14 @@ class SlackAgentBridge:
             await self._handle_event(body.get("event", {}), client=client, logger=logger)
 
         @self.app.event("message")
-        async def handle_direct_message(body: dict, client: AsyncWebClient, logger) -> None:
-            event = body.get("event", {})
-            if event.get("channel_type") != "im":
-                return
-            await self._handle_event(event, client=client, logger=logger)
+        async def handle_message(body: dict, client: AsyncWebClient, logger) -> None:
+            await self._handle_event(body.get("event", {}), client=client, logger=logger)
 
     async def _handle_event(self, event: dict, *, client: AsyncWebClient, logger) -> None:
+        if self.settings.bridge_mode == "codex-follower":
+            await self._handle_codex_follower_event(event, client=client, logger=logger)
+            return
+
         if event.get("subtype") or event.get("bot_id"):
             return
 
@@ -173,27 +196,12 @@ class SlackAgentBridge:
                 content=planner_reply,
             )
 
-            executor_reply = await run_agent_command(
-                self.settings.executor_command,
-                build_executor_prompt(
-                    self.sessions.get(thread_key),
-                    planner_reply,
-                    limit=self.settings.max_history_messages,
-                ),
-                cwd=self.workdir,
-            )
-            self.sessions.append(
-                thread_key,
-                role="executor",
-                author="Codex executor",
-                content=executor_reply,
-            )
-            await post_long_message(
-                client,
+            await self._run_executor_and_post(
+                client=client,
                 channel=channel,
                 thread_ts=thread_ts,
-                header="Codex executor",
-                content=executor_reply,
+                thread_key=thread_key,
+                planner_output=planner_reply,
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception("Slack agent bridge failed: %s", exc)
@@ -202,6 +210,86 @@ class SlackAgentBridge:
                 thread_ts=thread_ts,
                 text=f"*Bridge error*\n{exc}",
             )
+
+    async def _handle_codex_follower_event(
+        self,
+        event: dict,
+        *,
+        client: AsyncWebClient,
+        logger,
+    ) -> None:
+        channel = event.get("channel")
+        thread_ts = event.get("thread_ts") or event.get("ts")
+        if not channel or not thread_ts:
+            return
+
+        text = self._clean_text(event.get("text", ""))
+        if not text:
+            return
+
+        planner_event = is_planner_event(event, self.settings)
+        if event.get("bot_id") and not planner_event:
+            return
+        if event.get("subtype") and not planner_event:
+            return
+
+        thread_key = build_thread_key(channel, thread_ts)
+        author = "Claude planner" if planner_event else "Human"
+        role = "planner" if planner_event else "user"
+        self.sessions.append(thread_key, role=role, author=author, content=text)
+
+        if not planner_event or self.settings.codex_trigger_phrase not in text:
+            return
+
+        try:
+            await self._run_executor_and_post(
+                client=client,
+                channel=channel,
+                thread_ts=thread_ts,
+                thread_key=thread_key,
+                planner_output=text,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Codex follower bridge failed: %s", exc)
+            await client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=f"*Bridge error*\n{exc}",
+            )
+
+    async def _run_executor_and_post(
+        self,
+        *,
+        client: AsyncWebClient,
+        channel: str,
+        thread_ts: str,
+        thread_key: str,
+        planner_output: str,
+    ) -> None:
+        executor_reply = await run_agent_command(
+            self.settings.executor_command,
+            build_executor_prompt(
+                self.sessions.get(thread_key),
+                planner_output,
+                limit=self.settings.max_history_messages,
+            ),
+            cwd=self.workdir,
+        )
+        if self.settings.bridge_mode == "codex-follower":
+            executor_reply = f"{executor_reply}\n\n{planner_review_suffix(self.settings)}"
+        self.sessions.append(
+            thread_key,
+            role="executor",
+            author="Codex executor",
+            content=executor_reply,
+        )
+        await post_long_message(
+            client,
+            channel=channel,
+            thread_ts=thread_ts,
+            header="Codex executor",
+            content=executor_reply,
+        )
 
     @staticmethod
     def _clean_text(text: str) -> str:

@@ -98,6 +98,7 @@ Optional separate utility:
 - `Claude Code` acts as planner
 - `Codex` acts as executor
 - Slack thread is the shared coordination surface
+- supports `orchestrator` mode and `codex-follower` mode
 
 Runner:
 

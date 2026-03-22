@@ -1,13 +1,15 @@
 # Slack Agent Bridge
 
-This utility lets one Slack thread coordinate two local agents:
+This utility supports two Slack collaboration modes:
 
-- `Claude Code` = planner
-- `Codex` = executor
+- `orchestrator`: the local bridge runs both `Claude Code` and `Codex`
+- `codex-follower`: `Claude` speaks in Slack and the local bridge only runs `Codex` when Claude hands off with `@Codex`
 
 It is intentionally separate from the `job_finder` runtime.
 
 ## Behavior
+
+### `orchestrator` mode
 
 1. Human writes in a Slack DM or `@mentions` the bot in a thread.
 2. The bridge stores the thread transcript locally.
@@ -16,7 +18,15 @@ It is intentionally separate from the `job_finder` runtime.
 5. The bridge invokes `Codex` with the transcript plus planner handoff.
 6. The executor reply is posted back to the same Slack thread.
 
-The bridge ignores bot messages so it does not loop on itself.
+### `codex-follower` mode
+
+1. Human starts a task in a channel thread and tags `@Claude`.
+2. `Claude` replies in-thread with a handoff that includes `@Codex`.
+3. The bridge stores the thread transcript locally.
+4. The bridge detects the planner reply and invokes `Codex`.
+5. `Codex` posts the execution response back to the same thread and asks `@Claude` to review.
+
+This mode is designed for a visible Slack conversation between the two agents.
 
 ## Files
 
@@ -30,6 +40,10 @@ The bridge ignores bot messages so it does not loop on itself.
 ```env
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
+BRIDGE_MODE=codex-follower
+PLANNER_BOT_USER_ID=U...
+PLANNER_DISPLAY_NAME=Claude
+CODEX_TRIGGER_PHRASE=@Codex
 PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
 EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}
 ```
@@ -37,6 +51,7 @@ EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd
 Optional:
 
 ```env
+PLANNER_BOT_ID=B...
 BRIDGE_WORKDIR=/Users/sova/Desktop/Projects/job_finder
 SESSIONS_PATH=/Users/sova/Desktop/Projects/job_finder/.codex/agent_bridge_sessions.json
 MAX_HISTORY_MESSAGES=16
@@ -53,6 +68,8 @@ uv run python scripts/slack_agent_bridge.py
 ## Slack app configuration
 
 Use Socket Mode for the starter version.
+
+For `codex-follower` mode, invite the bot to the same channel as `@Claude` and configure the planner identity so the bridge can recognize Claude replies.
 
 The app should have:
 - `app_mentions:read`

@@ -148,7 +148,8 @@ Linear rules:
 
 ## Notes
 
-- If you use the local bridge runner, the current code already supports channel-based operation via `@mentions`.
+- If you use the local bridge runner in `codex-follower` mode, the flow can be fully automatic: you tag `@Claude`, Claude replies with `@Codex`, and the bridge runs Codex in the same thread.
+- If you use the local bridge runner in `orchestrator` mode, the bridge runs both Claude and Codex itself.
 - If you use the Claude Slack plugin directly, this document still works as the coordination protocol.
 - `Linear` tracks engineering work.
 - `CIS` tracks runtime intelligence.

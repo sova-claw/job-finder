@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -8,6 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class BridgeSettings(BaseSettings):
     slack_bot_token: str = ""
     slack_app_token: str = ""
+    bridge_mode: Literal["orchestrator", "codex-follower"] = "orchestrator"
     planner_command: str = "claude -p --permission-mode bypassPermissions --model sonnet"
     executor_command: str = (
         "codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}"
@@ -16,6 +18,10 @@ class BridgeSettings(BaseSettings):
     sessions_path: str = str(
         Path(__file__).resolve().parents[3] / ".codex" / "agent_bridge_sessions.json"
     )
+    planner_bot_user_id: str = ""
+    planner_bot_id: str = ""
+    planner_display_name: str = "Claude"
+    codex_trigger_phrase: str = "@Codex"
     max_history_messages: int = Field(default=16, ge=4, le=64)
 
     model_config = SettingsConfigDict(
