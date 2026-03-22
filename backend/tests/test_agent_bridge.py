@@ -8,6 +8,10 @@ from app.agent_bridge.service import (
     is_planner_event,
     planner_review_suffix,
     render_transcript,
+    should_trigger_executor,
+    targets_codex,
+    targets_planner,
+    thread_has_executor_activity,
 )
 from app.agent_bridge.session_store import SessionMessage, ThreadSessionStore
 
@@ -76,3 +80,83 @@ def test_planner_review_suffix_prefers_real_mention() -> None:
 
     fallback = BridgeSettings()
     assert planner_review_suffix(fallback) == "@Claude please review and plan the next step."
+
+
+def test_codex_target_detection_supports_mentions_and_plain_text() -> None:
+    settings = BridgeSettings(codex_trigger_phrase="@Codex")
+
+    assert targets_codex("hello <@UCODEX>", "hello", settings, codex_user_id="UCODEX") is True
+    assert targets_codex("hello @Codex", "hello @Codex", settings, codex_user_id="") is True
+    assert targets_codex("hello there", "hello there", settings, codex_user_id="UCODEX") is False
+
+
+def test_planner_target_detection_supports_mentions_and_plain_text() -> None:
+    settings = BridgeSettings(planner_bot_user_id="UCLAUDE", planner_display_name="Claude")
+
+    assert targets_planner("<@UCLAUDE> please review", "please review", settings) is True
+    assert targets_planner("@Claude review this", "@Claude review this", settings) is True
+    assert targets_planner("review this", "review this", settings) is False
+
+
+def test_thread_has_executor_activity_detects_prior_codex_turns() -> None:
+    history = [
+        SessionMessage(
+            created_at="2026-03-22T18:00:00+00:00",
+            author="Human",
+            role="user",
+            content="hi",
+        ),
+        SessionMessage(
+            created_at="2026-03-22T18:01:00+00:00",
+            author="Codex executor",
+            role="executor",
+            content="question",
+        ),
+    ]
+
+    assert thread_has_executor_activity(history) is True
+
+
+def test_should_trigger_executor_for_planner_handoff_and_human_follow_up() -> None:
+    settings = BridgeSettings(planner_bot_user_id="UCLAUDE", planner_display_name="Claude")
+    history = [
+        SessionMessage(
+            created_at="2026-03-22T18:00:00+00:00",
+            author="Human",
+            role="user",
+            content="start",
+        ),
+        SessionMessage(
+            created_at="2026-03-22T18:01:00+00:00",
+            author="Codex executor",
+            role="executor",
+            content="Need one clarification.",
+        ),
+    ]
+
+    assert should_trigger_executor(
+        planner_event=True,
+        raw_text="@Codex please execute",
+        cleaned_text="@Codex please execute",
+        settings=settings,
+        codex_user_id="",
+        history=history,
+    ) is True
+
+    assert should_trigger_executor(
+        planner_event=False,
+        raw_text="status?",
+        cleaned_text="status?",
+        settings=settings,
+        codex_user_id="",
+        history=history,
+    ) is True
+
+    assert should_trigger_executor(
+        planner_event=False,
+        raw_text="@Claude please review",
+        cleaned_text="@Claude please review",
+        settings=settings,
+        codex_user_id="",
+        history=history,
+    ) is False

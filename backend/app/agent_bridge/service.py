@@ -141,12 +141,72 @@ def planner_review_suffix(settings: BridgeSettings) -> str:
     return "@Claude please review and plan the next step."
 
 
+def mentions_user(raw_text: str, user_id: str) -> bool:
+    return bool(user_id and f"<@{user_id}>" in raw_text)
+
+
+def targets_codex(
+    raw_text: str,
+    cleaned_text: str,
+    settings: BridgeSettings,
+    *,
+    codex_user_id: str,
+) -> bool:
+    phrase = settings.codex_trigger_phrase.strip().lower()
+    cleaned = cleaned_text.strip().lower()
+    return any(
+        [
+            mentions_user(raw_text, codex_user_id),
+            phrase and phrase in cleaned,
+        ]
+    )
+
+
+def targets_planner(raw_text: str, cleaned_text: str, settings: BridgeSettings) -> bool:
+    planner_name = settings.planner_display_name.strip().lower()
+    cleaned = cleaned_text.strip().lower()
+    return any(
+        [
+            mentions_user(raw_text, settings.planner_bot_user_id),
+            planner_name and f"@{planner_name}" in cleaned,
+        ]
+    )
+
+
+def thread_has_executor_activity(messages: list[SessionMessage]) -> bool:
+    return any(message.role == "executor" for message in messages)
+
+
+def should_trigger_executor(
+    *,
+    planner_event: bool,
+    raw_text: str,
+    cleaned_text: str,
+    settings: BridgeSettings,
+    codex_user_id: str,
+    history: list[SessionMessage],
+) -> bool:
+    if planner_event:
+        return targets_codex(raw_text, cleaned_text, settings, codex_user_id=codex_user_id)
+
+    if targets_codex(raw_text, cleaned_text, settings, codex_user_id=codex_user_id):
+        return True
+
+    if thread_has_executor_activity(history) and not targets_planner(
+        raw_text, cleaned_text, settings
+    ):
+        return True
+
+    return False
+
+
 class SlackAgentBridge:
     def __init__(self, settings: BridgeSettings) -> None:
         self.settings = settings
         self.sessions = ThreadSessionStore(settings.sessions_path)
         self.workdir = Path(settings.bridge_workdir)
         self.app = AsyncApp(token=settings.slack_bot_token)
+        self.codex_user_id = ""
         self._register_handlers()
 
     def _register_handlers(self) -> None:
@@ -223,7 +283,8 @@ class SlackAgentBridge:
         if not channel or not thread_ts:
             return
 
-        text = self._clean_text(event.get("text", ""))
+        raw_text = event.get("text", "")
+        text = self._clean_text(raw_text)
         if not text:
             return
 
@@ -237,8 +298,16 @@ class SlackAgentBridge:
         author = "Claude planner" if planner_event else "Human"
         role = "planner" if planner_event else "user"
         self.sessions.append(thread_key, role=role, author=author, content=text)
+        history = self.sessions.get(thread_key)
 
-        if not planner_event or self.settings.codex_trigger_phrase not in text:
+        if not should_trigger_executor(
+            planner_event=planner_event,
+            raw_text=raw_text,
+            cleaned_text=text,
+            settings=self.settings,
+            codex_user_id=self.codex_user_id,
+            history=history,
+        ):
             return
 
         try:
@@ -298,5 +367,7 @@ class SlackAgentBridge:
     async def run(self) -> None:
         if not self.settings.slack_bot_token or not self.settings.slack_app_token:
             raise RuntimeError("SLACK_BOT_TOKEN and SLACK_APP_TOKEN are required")
+        auth = await self.app.client.auth_test()
+        self.codex_user_id = str(auth.get("user_id", ""))
         handler = AsyncSocketModeHandler(self.app, self.settings.slack_app_token)
         await handler.start_async()

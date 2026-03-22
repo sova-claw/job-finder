@@ -29,8 +29,10 @@ Definition of done: new openings stored in DB, deduped, validated, and pushed.
 Expected thread flow:
 1. `Claude planner` posts intent, plan, risks, and handoff.
 2. `Codex executor` posts what it will do.
-3. `Codex executor` posts completion details.
-4. `@Claude` reviews and plans the next step.
+3. `Codex executor` can ask a concise question if blocked or missing context.
+4. You can reply in the same thread, including simple status questions.
+5. `Codex executor` posts completion details.
+6. `@Claude` reviews and plans the next step.
 
 ## Prompt For Codex
 
