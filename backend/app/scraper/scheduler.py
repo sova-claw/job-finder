@@ -12,6 +12,7 @@ from app.scraper.djinni import scrape_djinni
 from app.scraper.dou import scrape_dou
 from app.scraper.hn_jobs import scrape_hn_jobs
 from app.services.company_sync import sync_airtable_companies
+from app.services.slack import dispatch_new_jobs_to_slack
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -80,6 +81,23 @@ class SchedulerService:
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Airtable sync failed: %s", exc)
 
+    async def run_slack_job(self) -> None:
+        async with SessionLocal() as session:
+            try:
+                summary = await dispatch_new_jobs_to_slack(session)
+                logger.info(
+                    "slack dispatch complete",
+                    extra={
+                        "count_found": summary.count_found,
+                        "count_posted": summary.count_posted,
+                        "count_skipped": summary.count_skipped,
+                    },
+                )
+            except RuntimeError:
+                logger.info("Slack dispatch skipped because Slack is not configured")
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Slack dispatch failed: %s", exc)
+
     def start(self) -> None:
         if self._started:
             return
@@ -123,6 +141,13 @@ class SchedulerService:
             "interval",
             minutes=settings.airtable_sync_interval_minutes,
             id="sync-airtable",
+            replace_existing=True,
+        )
+        self.scheduler.add_job(
+            self.run_slack_job,
+            "interval",
+            minutes=settings.slack_post_interval_minutes,
+            id="notify-slack",
             replace_existing=True,
         )
         self.scheduler.start()

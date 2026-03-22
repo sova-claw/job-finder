@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     airtable_table_strategy_targets: str = "Strategy Targets"
     airtable_sync_interval_minutes: int = 60
     airtable_timeout_seconds: float = 20.0
+    slack_webhook_url: str = ""
+    slack_post_interval_minutes: int = 15
+    slack_min_match_score: int = 0
+    slack_max_posts_per_run: int = 10
     cf_tunnel_token: str = ""
     hn_thread_id: str = "42306918"
 

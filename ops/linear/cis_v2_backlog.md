@@ -23,6 +23,7 @@ Issues:
 - Add manual sync endpoint
 - Add scheduled sync job
 - Add tests for idempotent company sync
+- Add Slack delivery for newly discovered jobs
 
 ## Epic: `Companies UI`
 

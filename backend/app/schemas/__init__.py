@@ -1,3 +1,4 @@
+from app.schemas.alerts import SlackDispatchResponse
 from app.schemas.cover_letter import CoverLetterRequest, CoverLetterResponse
 from app.schemas.job import (
     AnalyzeUrlRequest,
@@ -21,6 +22,7 @@ __all__ = [
     "JobExtraction",
     "JobListResponse",
     "MarketInsight",
+    "SlackDispatchResponse",
     "JobStats",
     "JobSummary",
 ]

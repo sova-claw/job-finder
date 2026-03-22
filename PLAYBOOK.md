@@ -64,6 +64,7 @@ Use CIS for:
 - dual-track dashboard
 - strategy visibility
 - signals and alerts
+- Slack delivery of newly discovered roles
 
 Do not use CIS v1 for:
 - editing company CRM records
@@ -220,6 +221,7 @@ Company priority should consider:
    - apply
    - reach out
    - follow up
+   - review Slack-delivered new roles
 5. Build CIS features that strengthen the AI portfolio lane
 6. Update `Linear` with implementation progress
 

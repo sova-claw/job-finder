@@ -41,4 +41,5 @@ class Job(Base):
         nullable=False,
     )
     extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    slack_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)

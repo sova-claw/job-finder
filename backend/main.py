@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.database import get_session
 from app.routers import (
+    alerts_router,
     analysis_router,
     companies_router,
     jobs_router,
@@ -45,6 +46,7 @@ app.add_middleware(
 app.include_router(jobs_router, prefix=settings.api_prefix)
 app.include_router(analysis_router, prefix=settings.api_prefix)
 app.include_router(stats_router, prefix=settings.api_prefix)
+app.include_router(alerts_router, prefix=settings.api_prefix)
 app.include_router(companies_router, prefix=settings.api_prefix)
 app.include_router(strategy_router, prefix=settings.api_prefix)
 

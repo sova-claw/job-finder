@@ -81,6 +81,17 @@ flowchart TD
 - Source notes:
   - `SCRAPERS.md`
 
+## Alerts
+
+- Slack:
+  - new active jobs can be posted to Slack via Incoming Webhook
+  - scheduler polls unposted jobs and marks them after delivery
+  - manual trigger:
+
+```bash
+curl -X POST http://localhost:8000/api/alerts/slack/send
+```
+
 ## Airtable Setup
 
 1. Create a new Airtable base for CIS.
@@ -99,6 +110,10 @@ AIRTABLE_PAT=...
 AIRTABLE_BASE_ID=app...
 AIRTABLE_TABLE_COMPANIES=Companies
 AIRTABLE_SYNC_INTERVAL_MINUTES=60
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+SLACK_POST_INTERVAL_MINUTES=15
+SLACK_MIN_MATCH_SCORE=0
+SLACK_MAX_POSTS_PER_RUN=10
 ```
 
 6. Run manual sync:
@@ -108,6 +123,7 @@ curl -X POST http://localhost:8000/api/sync/airtable
 ```
 
 If `AIRTABLE_BASE_ID` is missing or the token has no accessible bases, the sync endpoint returns `503`.
+If `SLACK_WEBHOOK_URL` is missing, Slack dispatch is skipped by the scheduler and the manual endpoint returns `503`.
 
 ## Linear Setup
 
