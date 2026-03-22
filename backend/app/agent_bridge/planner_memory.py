@@ -183,6 +183,7 @@ class PlannerMemoryStore:
             line[2:].strip()
             for line in sections.get(title, [])
             if line.strip().startswith("- ")
+            and line[2:].strip() != "(empty)"
         ]
         merged = [entry for entry in [item, *existing] if entry]
         deduped: list[str] = []

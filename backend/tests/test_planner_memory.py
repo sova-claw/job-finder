@@ -55,6 +55,18 @@ Blockers or next steps
     assert "- C1:100.0: Some companies use custom HTML pages." in content
     assert "- C1:100.0: Start with JFrog and monday.com." in content
     assert "executor updated C1:100.0" in content
+    planner_section = (
+        "## Recent Planner Notes\n"
+        "- C1:100.0: Ship the careers scraper for the first ATS targets.\n"
+        "- (empty)"
+    )
+    execution_section = (
+        "## Recent Execution Notes\n"
+        "- C1:100.0: Added company board discovery and normalized job extraction.\n"
+        "- (empty)"
+    )
+    assert planner_section not in content
+    assert execution_section not in content
 
 
 def test_planner_memory_store_deduplicates_repeated_items(tmp_path: Path) -> None:
