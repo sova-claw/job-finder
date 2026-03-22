@@ -29,6 +29,12 @@ class BridgeSettings(BaseSettings):
     planner_display_name: str = "Claude"
     planner_trigger_phrase: str = "@Claude"
     codex_trigger_phrase: str = "@Codex"
+    default_agent_channel_id: str = ""
+    overnight_max_cycles: int = Field(default=3, ge=1, le=12)
+    overnight_goal: str = (
+        "Work the highest-priority unblocked task in the repo, keep tasks bounded, "
+        "post progress in Slack, and stop when a real blocker or decision is needed."
+    )
     max_history_messages: int = Field(default=16, ge=4, le=64)
 
     model_config = SettingsConfigDict(

@@ -106,12 +106,20 @@ Recommended mode for stable planning context:
 - planner context is loaded from `PLANNER_CONTEXT.md` and `PLANNER_MEMORY.md`
 - thread transcript is loaded from local session storage
 - repo state is injected on each planner call
+- optional night-shift runner can execute bounded `Claude -> Codex` cycles in a new Slack thread
 
 Runner:
 
 ```bash
 cd backend
 PYTHONPATH=. uv run python scripts/slack_agent_bridge.py
+```
+
+Night shift runner:
+
+```bash
+cd backend
+PYTHONPATH=. uv run python scripts/agent_night_shift.py --channel-id <SLACK_CHANNEL_ID>
 ```
 
 Required env for the bridge:

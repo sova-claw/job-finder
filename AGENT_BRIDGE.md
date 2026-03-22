@@ -56,6 +56,27 @@ In `local-roles` mode:
 
 This gives you one planner context across many tasks.
 
+## Night Shift Mode
+
+For an autonomous but bounded overnight run:
+
+```bash
+cd backend
+PYTHONPATH=. uv run python scripts/agent_night_shift.py --channel-id <SLACK_CHANNEL_ID>
+```
+
+The night shift runner:
+- opens one new Slack thread
+- uses the same planner context and planner memory as the bridge
+- runs `Claude planner -> Codex executor` in cycles
+- stops when it hits a real blocker or decision
+- posts a final summary into the same Slack thread
+
+Recommended role model:
+- `Nazar = CEO`
+- `Claude = Product Owner / PM / BA / Scrum Master`
+- `Codex = Tech Lead / Super Senior executor`
+
 ## Required Environment Variables
 
 ```env
@@ -75,6 +96,9 @@ BRIDGE_WORKDIR=/Users/sova/Desktop/Projects/job_finder
 PLANNER_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/PLANNER_CONTEXT.md
 PLANNER_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/PLANNER_MEMORY.md
 SESSIONS_PATH=/Users/sova/Desktop/Projects/job_finder/.codex/agent_bridge_sessions.json
+DEFAULT_AGENT_CHANNEL_ID=
+OVERNIGHT_MAX_CYCLES=3
+OVERNIGHT_GOAL=Work the highest-priority unblocked task in the repo, keep tasks bounded, post progress in Slack, and stop when a real blocker or decision is needed.
 MAX_HISTORY_MESSAGES=16
 ```
 
