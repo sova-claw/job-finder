@@ -13,6 +13,7 @@ from slack_bolt.async_app import AsyncApp
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.agent_bridge.config import BridgeSettings
+from app.agent_bridge.planner_memory import PlannerMemoryStore
 from app.agent_bridge.session_store import SessionMessage, ThreadSessionStore
 
 PLANNER_INSTRUCTIONS = """You are Claude Code acting as the planner for this repository.
@@ -292,6 +293,7 @@ class SlackAgentBridge:
     def __init__(self, settings: BridgeSettings) -> None:
         self.settings = settings
         self.sessions = ThreadSessionStore(settings.sessions_path)
+        self.planner_memory = PlannerMemoryStore(settings.planner_memory_path)
         self.workdir = Path(settings.bridge_workdir)
         self.app = AsyncApp(token=settings.slack_bot_token)
         self.codex_user_id = ""
@@ -532,6 +534,7 @@ class SlackAgentBridge:
             author="Claude planner",
             content=planner_reply,
         )
+        self.planner_memory.record_planner_reply(thread_key, planner_reply)
         await post_long_message(
             client,
             channel=channel,
@@ -561,6 +564,7 @@ class SlackAgentBridge:
             ),
             cwd=self.workdir,
         )
+        self.planner_memory.record_executor_reply(thread_key, executor_reply)
         if self.settings.bridge_mode in {"codex-follower", "local-roles"}:
             executor_reply = f"{executor_reply}\n\n{planner_review_suffix(self.settings)}"
         self.sessions.append(

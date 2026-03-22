@@ -20,6 +20,7 @@ The bridge owns the planner context and reuses it on every call.
 Tracked in repo:
 - `PLANNER_CONTEXT.md`
 - `PLANNER_MEMORY.md`
+  - updated by the bridge after planner and executor replies
 
 Local runtime state:
 - `.codex/agent_bridge_sessions.json`

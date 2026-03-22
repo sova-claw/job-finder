@@ -17,12 +17,33 @@ The planner state lives in the project:
   - long-lived product and role context
 - `PLANNER_MEMORY.md`
   - rolling operational memory
+  - auto-updated by the bridge after planner and executor replies
 - `.codex/agent_bridge_sessions.json`
   - per-thread transcript memory
 - current repo state
   - branch, status, recent commits
 
 Every planner call receives all four inputs.
+
+## How Memory Updates Work
+
+After a planner reply, the bridge extracts:
+- `Intent`
+- `Risks`
+- `Handoff`
+
+After an executor reply, the bridge extracts:
+- `What I changed or found`
+- `Blockers or next steps`
+
+Those summaries are written back into `PLANNER_MEMORY.md` under:
+- `Recent Planner Notes`
+- `Recent Execution Notes`
+- `Recent Risks or Blockers`
+- `Next Suggested Tasks`
+- `Last Activity`
+
+This keeps one planner brain across many Slack threads without relying on the native Claude Slack app.
 
 ## How Slack Invocation Works
 

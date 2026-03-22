@@ -24,4 +24,16 @@
 ## Next Likely Tasks
 - stabilize `local-roles` Slack routing
 - persist bridge runtime with launchd or similar
-- optionally sync planner summaries back into planner memory
+- add self-updating planner memory after planner/executor replies
+
+## Recent Planner Notes
+- (empty)
+
+## Recent Execution Notes
+- (empty)
+
+## Recent Risks or Blockers
+- (empty)
+
+## Last Activity
+- (empty)
