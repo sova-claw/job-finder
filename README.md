@@ -169,6 +169,8 @@ Backlog blueprint:
 
 - Operating model and execution rules:
   - `PLAYBOOK.md`
+- Slack collaboration protocol for Claude + Codex:
+  - `SLACK_COLLABORATION.md`
 - Scraper notes:
   - `SCRAPERS.md`
 - Airtable starter import:
