@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -31,7 +32,7 @@ async def main() -> None:
                 url=job.url,
                 source=job.source,
             )
-            score, gaps = score_job(extraction, profile)
+            scored = await score_job(extraction, profile, raw_text=job.raw_text or "")
             job.title = extraction.title
             job.company = extraction.company
             job.company_type = extraction.company_type
@@ -43,9 +44,15 @@ async def main() -> None:
             job.domain = extraction.domain
             job.remote = extraction.remote
             job.location = extraction.location
-            job.match_score = score
-            job.gaps = [gap.model_dump() for gap in gaps]
-            job.is_active = matches_focus_role(extraction.title, job.raw_text or "") and (
+            job.match_score = scored.score
+            job.hard_matches = scored.hard_matches
+            job.soft_matches = scored.soft_matches
+            job.dealbreaker = scored.dealbreaker
+            job.gaps = [gap.model_dump() for gap in scored.gaps]
+            job.scored_at = datetime.now(UTC)
+            job.is_active = (not scored.dealbreaker) and matches_focus_role(
+                extraction.title, job.raw_text or ""
+            ) and (
                 matches_abroad_remote_preference(
                     title=extraction.title,
                     location=extraction.location,

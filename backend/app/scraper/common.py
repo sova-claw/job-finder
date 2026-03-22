@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models.job import Job
+from app.schemas.job import JobExtraction
 from app.services.extractor import extract_job_details
 from app.services.profile import (
     get_candidate_profile,
@@ -263,13 +264,14 @@ async def save_scraped_posting(session: AsyncSession, posting: ScrapedPosting) -
         job.is_active = True
 
     raw_text_changed = previous_raw_text != posting.raw_text if not is_new else True
-    if job.extracted_at is None or raw_text_changed:
+    extraction: JobExtraction | None = None
+    needs_extraction = job.extracted_at is None or raw_text_changed
+    if needs_extraction:
         extraction = await extract_job_details(
             posting.raw_text,
             url=posting.url,
             source=posting.source,
         )
-        score, gaps = score_job(extraction, get_candidate_profile())
         job.title = extraction.title or posting.title
         job.company = extraction.company or posting.company
         job.company_type = extraction.company_type
@@ -281,11 +283,38 @@ async def save_scraped_posting(session: AsyncSession, posting: ScrapedPosting) -
         job.domain = extraction.domain
         job.remote = extraction.remote
         job.location = extraction.location
-        job.match_score = score
-        job.gaps = [gap.model_dump(mode="json") for gap in gaps]
         job.extracted_at = datetime.now(UTC)
-        job.is_active = matches_focus_role(job.title or posting.title, posting.raw_text) and (
-            matches_abroad_remote_preference(
+    elif job.title and job.company and job.company_type and job.domain is not None:
+        extraction = JobExtraction(
+            title=job.title,
+            company=job.company,
+            company_type=job.company_type,
+            salary_min=job.salary_min,
+            salary_max=job.salary_max,
+            requirements_must=job.requirements_must or [],
+            requirements_nice=job.requirements_nice or [],
+            tags=job.tags or [],
+            domain=job.domain,
+            remote=bool(job.remote),
+            location=job.location,
+        )
+
+    if extraction is not None and (needs_extraction or job.scored_at is None):
+        scored = await score_job(
+            extraction,
+            get_candidate_profile(),
+            raw_text=posting.raw_text,
+        )
+        job.match_score = scored.score
+        job.hard_matches = scored.hard_matches
+        job.soft_matches = scored.soft_matches
+        job.dealbreaker = scored.dealbreaker
+        job.gaps = [gap.model_dump(mode="json") for gap in scored.gaps]
+        job.scored_at = datetime.now(UTC)
+        job.is_active = (
+            not scored.dealbreaker
+            and matches_focus_role(job.title or posting.title, posting.raw_text)
+            and matches_abroad_remote_preference(
                 title=job.title or posting.title,
                 location=job.location,
                 raw_text=posting.raw_text,

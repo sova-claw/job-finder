@@ -153,6 +153,8 @@ AIRTABLE_BASE_ID=app...
 AIRTABLE_TABLE_COMPANIES=Companies
 AIRTABLE_SYNC_INTERVAL_MINUTES=60
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_CHANNEL_OVERRIDES_JSON={"jobs-priority":"C0123456789"}
 SLACK_POST_INTERVAL_MINUTES=15
 SLACK_MIN_MATCH_SCORE=0
 SLACK_MAX_POSTS_PER_RUN=10
@@ -166,6 +168,8 @@ curl -X POST http://localhost:8000/api/sync/airtable
 
 If `AIRTABLE_BASE_ID` is missing or the token has no accessible bases, the sync endpoint returns `503`.
 If `SLACK_WEBHOOK_URL` is missing, Slack dispatch is skipped by the scheduler and the manual endpoint returns `503`.
+For multi-channel job routing, `SLACK_BOT_TOKEN` is required. If target channels are private, either give the bot
+`groups:read` or set `SLACK_CHANNEL_OVERRIDES_JSON` with explicit channel IDs.
 
 ## Linear Setup
 

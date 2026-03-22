@@ -1,7 +1,14 @@
 import hashlib
 import json
+from dataclasses import dataclass
 
 from app.schemas.profile import CandidateProfile, Certification
+
+
+@dataclass(frozen=True)
+class ScoreRule:
+    label: str
+    keywords: tuple[str, ...]
 
 ROLE_FOCUS_KEYWORDS = (
     "qa automation",
@@ -58,6 +65,75 @@ LOCAL_LOCATION_KEYWORDS = (
     "poltava",
     "рівне",
     "rivne",
+)
+
+HARD_MATCH_RULES: tuple[ScoreRule, ...] = (
+    ScoreRule("Python", ("python",)),
+    ScoreRule(
+        "QA Automation",
+        (
+            "qa automation",
+            "automation qa",
+            "test automation",
+            "sdet",
+            "software engineer in test",
+            "quality engineer",
+            "automation engineer",
+            "aqa",
+        ),
+    ),
+    ScoreRule(
+        "API Testing",
+        ("api testing", "rest api", "graphql", "postman", "requests", "api quality"),
+    ),
+)
+
+SOFT_MATCH_RULES: tuple[ScoreRule, ...] = (
+    ScoreRule("UI Automation", ("playwright", "selenium", "webdriver", "cypress")),
+    ScoreRule("CI/CD", ("github actions", "gitlab ci", "jenkins", "ci/cd", "pipeline")),
+    ScoreRule("Docker/Containers", ("docker", "docker compose", "container", "kubernetes")),
+    ScoreRule("Cloud", ("aws", "gcp", "cloud")),
+    ScoreRule(
+        "Preferred Domain",
+        ("fintech", "payments", "healthtech", "edtech", "developer tools", "saas"),
+    ),
+)
+
+DEALBREAKER_RULES: tuple[ScoreRule, ...] = (
+    ScoreRule(
+        "Manual-only QA",
+        (
+            "manual qa only",
+            "manual testing only",
+            "manual tester only",
+            "pure manual testing",
+            "no automation",
+        ),
+    ),
+    ScoreRule(
+        "On-site only",
+        (
+            "on-site only",
+            "onsite only",
+            "office-based only",
+            "in office only",
+            "5 days onsite",
+            "five days onsite",
+            "relocation required",
+        ),
+    ),
+    ScoreRule(
+        "Below target seniority",
+        (
+            "qa intern",
+            "qa trainee",
+            "junior qa",
+            "junior sdet",
+            "middle qa",
+            "mid-level qa",
+            "associate qa",
+        ),
+    ),
 )
 
 PROFILE = CandidateProfile(
@@ -132,6 +208,14 @@ PROFILE = CandidateProfile(
 
 def get_candidate_profile() -> CandidateProfile:
     return PROFILE
+
+
+def get_scoring_rules() -> tuple[
+    tuple[ScoreRule, ...],
+    tuple[ScoreRule, ...],
+    tuple[ScoreRule, ...],
+]:
+    return HARD_MATCH_RULES, SOFT_MATCH_RULES, DEALBREAKER_RULES
 
 
 def get_profile_hash() -> str:

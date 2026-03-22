@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     anthropic_base_url: str = "https://api.anthropic.com/v1/messages"
     anthropic_extractor_model: str = "claude-3-5-haiku-latest"
     anthropic_cover_letter_model: str = "claude-sonnet-4-20250514"
+    anthropic_scoring_model: str = "claude-sonnet-4-20250514"
     apify_token: str = ""
     apify_linkedin_actor_id: str = "valig/linkedin-jobs-scraper"
     apify_linkedin_titles_csv: str = ",".join(
@@ -54,6 +55,8 @@ class Settings(BaseSettings):
     airtable_sync_interval_minutes: int = 60
     airtable_timeout_seconds: float = 20.0
     slack_webhook_url: str = ""
+    slack_bot_token: str = ""
+    slack_channel_overrides_json: str = ""
     slack_post_interval_minutes: int = 15
     slack_min_match_score: int = 0
     slack_max_posts_per_run: int = 10

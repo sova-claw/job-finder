@@ -45,10 +45,14 @@ class JobSummary(APIModel):
     remote: bool | None = None
     location: str | None = None
     match_score: int | None = None
+    hard_matches: list[str] | None = None
+    soft_matches: list[str] | None = None
+    dealbreaker: bool | None = None
     top_gap: str | None = None
     verdict: Verdict = "not_aligned"
     posted_at: datetime | None = None
     scraped_at: datetime | None = None
+    scored_at: datetime | None = None
     is_active: bool
 
 

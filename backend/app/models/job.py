@@ -31,6 +31,9 @@ class Job(Base):
 
     match_score: Mapped[int | None] = mapped_column(Integer)
     gaps: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    hard_matches: Mapped[list[str] | None] = mapped_column(JSONB)
+    soft_matches: Mapped[list[str] | None] = mapped_column(JSONB)
+    dealbreaker: Mapped[bool | None] = mapped_column(Boolean)
 
     search_vector: Mapped[str | None] = mapped_column(TSVECTOR)
 
@@ -41,5 +44,6 @@ class Job(Base):
         nullable=False,
     )
     extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     slack_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)

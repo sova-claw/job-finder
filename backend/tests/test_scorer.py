@@ -1,9 +1,12 @@
+import pytest
+
 from app.schemas.job import JobExtraction
 from app.services.profile import get_candidate_profile
 from app.services.scorer import score_job
 
 
-def test_score_job_returns_gaps_for_qa_automation_skills() -> None:
+@pytest.mark.asyncio
+async def test_score_job_returns_matches_and_gaps_for_qa_automation_role() -> None:
     extraction = JobExtraction(
         title="Senior QA Automation Engineer",
         company="Example",
@@ -24,29 +27,45 @@ def test_score_job_returns_gaps_for_qa_automation_skills() -> None:
         location="Remote",
     )
 
-    score, gaps = score_job(extraction, get_candidate_profile())
-
-    assert 0 < score <= 100
-    assert any(gap.skill == "UI automation" for gap in gaps)
-    assert any(gap.skill == "Performance testing" for gap in gaps)
-
-
-def test_score_job_does_not_award_irrelevant_skill_weight() -> None:
-    extraction = JobExtraction(
-        title="Operations Coordinator",
-        company="Example",
-        company_type="Service",
-        salary_min=1000,
-        salary_max=1500,
-        requirements_must=["Excel", "Stakeholder communication"],
-        requirements_nice=[],
-        tags=["Excel"],
-        domain="General",
-        remote=False,
-        location="Kyiv",
+    scored = await score_job(
+        extraction,
+        get_candidate_profile(),
+        raw_text=(
+            "Senior QA Automation Engineer with Python, Playwright, API testing, "
+            "Docker, AWS, GitHub Actions, and fintech platform experience."
+        ),
     )
 
-    score, gaps = score_job(extraction, get_candidate_profile())
+    assert scored.score == 100
+    assert scored.hard_matches == ["Python", "QA Automation", "API Testing"]
+    assert "UI Automation" in scored.soft_matches
+    assert "Cloud" in scored.soft_matches
+    assert any(gap.skill == "UI automation" for gap in scored.gaps)
+    assert any(gap.skill == "Performance testing" for gap in scored.gaps)
+    assert scored.dealbreaker is False
 
-    assert score == 0
-    assert gaps == []
+
+@pytest.mark.asyncio
+async def test_score_job_flags_manual_only_role_as_dealbreaker() -> None:
+    extraction = JobExtraction(
+        title="Manual QA Engineer",
+        company="Example",
+        company_type="Service",
+        salary_min=2000,
+        salary_max=3000,
+        requirements_must=["Manual testing only", "Regression test execution"],
+        requirements_nice=[],
+        tags=["Manual QA"],
+        domain="General",
+        remote=True,
+        location="Remote",
+    )
+
+    scored = await score_job(
+        extraction,
+        get_candidate_profile(),
+        raw_text="Manual QA only role. No automation. Regression test execution.",
+    )
+
+    assert scored.score == 0
+    assert scored.dealbreaker is True

@@ -11,15 +11,19 @@ def _job(**overrides: object) -> Job:
         "id": "job-1",
         "url": "https://example.com/jobs/1",
         "source": "Djinni",
-        "source_group": "Ukraine",
+        "source_group": "BigCo",
         "title": "Senior QA Automation Engineer",
         "company": "Bolt",
         "salary_min": 6000,
         "salary_max": 8000,
         "location": "Poland",
         "match_score": 82,
+        "hard_matches": ["Python", "QA Automation"],
+        "soft_matches": ["UI Automation", "CI/CD"],
+        "dealbreaker": False,
         "gaps": [{"skill": "Playwright", "current": 60, "target": 100, "weeks_to_close": 4}],
         "posted_at": datetime(2026, 3, 22, tzinfo=UTC),
+        "scored_at": datetime(2026, 3, 22, tzinfo=UTC),
         "is_active": True,
     }
     payload.update(overrides)
@@ -27,28 +31,32 @@ def _job(**overrides: object) -> Job:
 
 
 def test_build_slack_payload_contains_key_fields() -> None:
-    payload = slack.build_slack_payload(_job())
+    payload = slack.build_slack_payload(_job(), routed_channels=["#jobs-poland"])
 
     assert payload["text"] == "New CIS job: Senior QA Automation Engineer at Bolt"
     blocks = payload["blocks"]
     assert isinstance(blocks, list)
     assert any("Playwright" in field["text"] for field in blocks[1]["fields"])
+    assert any("Python, QA Automation" in field["text"] for field in blocks[1]["fields"])
+    assert any("#jobs-poland" in field["text"] for field in blocks[1]["fields"])
 
 
 @pytest.mark.asyncio
 async def test_dispatch_new_jobs_to_slack_marks_jobs_notified(monkeypatch) -> None:
-    monkeypatch.setattr(slack.settings, "slack_webhook_url", "https://hooks.slack.test/T000/B000/XXX")
+    monkeypatch.setattr(slack.settings, "slack_bot_token", "xoxb-test")
     monkeypatch.setattr(slack.settings, "slack_max_posts_per_run", 10)
 
     jobs = [_job(), _job(id="job-2", url="https://example.com/jobs/2", company="Agoda")]
-    posted_payloads: list[dict[str, object]] = []
+    routed_jobs: list[str] = []
 
     async def fake_list_pending_jobs(_session, *, limit: int):
         assert limit == 10
         return jobs
 
-    async def fake_post_payload(_webhook_url: str, payload: dict[str, object]) -> None:
-        posted_payloads.append(payload)
+    async def fake_dispatch_job(job: Job, *, client=None, channel_cache=None) -> list[str]:
+        del client, channel_cache
+        routed_jobs.append(job.id)
+        return ["#jobs-poland"]
 
     class FakeSession:
         def __init__(self) -> None:
@@ -59,7 +67,7 @@ async def test_dispatch_new_jobs_to_slack_marks_jobs_notified(monkeypatch) -> No
 
     session = FakeSession()
     monkeypatch.setattr(slack, "list_pending_slack_jobs", fake_list_pending_jobs)
-    monkeypatch.setattr(slack, "post_payload", fake_post_payload)
+    monkeypatch.setattr(slack, "dispatch_job_to_slack", fake_dispatch_job)
 
     summary = await slack.dispatch_new_jobs_to_slack(session)  # type: ignore[arg-type]
 
@@ -67,4 +75,4 @@ async def test_dispatch_new_jobs_to_slack_marks_jobs_notified(monkeypatch) -> No
     assert summary.count_posted == 2
     assert session.commits == 2
     assert all(job.slack_notified_at is not None for job in jobs)
-    assert posted_payloads[0]["text"] == "New CIS job: Senior QA Automation Engineer at Bolt"
+    assert routed_jobs == ["job-1", "job-2"]

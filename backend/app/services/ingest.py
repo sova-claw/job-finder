@@ -32,9 +32,9 @@ def derive_top_gap(gaps: list[dict[str, Any]] | None) -> str | None:
 def derive_verdict(match_score: int | None) -> Verdict:
     if match_score is None:
         return "not_aligned"
-    if match_score >= 70:
+    if match_score >= 85:
         return "apply_now"
-    if match_score >= 45:
+    if match_score >= 75:
         return "prepare_first"
     return "not_aligned"
 
@@ -55,10 +55,14 @@ def serialize_job(job: Job) -> dict[str, Any]:
         "remote": job.remote,
         "location": job.location,
         "match_score": job.match_score,
+        "hard_matches": job.hard_matches,
+        "soft_matches": job.soft_matches,
+        "dealbreaker": job.dealbreaker,
         "top_gap": derive_top_gap(job.gaps),
         "verdict": derive_verdict(job.match_score),
         "posted_at": job.posted_at,
         "scraped_at": job.scraped_at,
+        "scored_at": job.scored_at,
         "is_active": job.is_active,
         "raw_text": job.raw_text,
         "requirements_must": job.requirements_must,

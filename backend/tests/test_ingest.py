@@ -18,10 +18,11 @@ def test_job_summary_derives_top_gap_and_verdict() -> None:
         domain="Developer Tools",
         remote=True,
         location="Remote",
-        match_score=72,
+        match_score=90,
         gaps=[{"skill": "RAG + Vector DB", "current": 0, "target": 100, "weeks_to_close": 2}],
         posted_at=datetime.now(UTC),
         scraped_at=datetime.now(UTC),
+        scored_at=datetime.now(UTC),
         extracted_at=datetime.now(UTC),
         is_active=True,
     )
