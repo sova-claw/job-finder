@@ -92,6 +92,29 @@ flowchart TD
 curl -X POST http://localhost:8000/api/alerts/slack/send
 ```
 
+## Agent Bridge
+
+Optional separate utility:
+- `Claude Code` acts as planner
+- `Codex` acts as executor
+- Slack thread is the shared coordination surface
+
+Runner:
+
+```bash
+cd backend
+uv run python scripts/slack_agent_bridge.py
+```
+
+Required env for the bridge:
+
+```env
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_APP_TOKEN=xapp-...
+PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
+EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}
+```
+
 ## Airtable Setup
 
 1. Create a new Airtable base for CIS.

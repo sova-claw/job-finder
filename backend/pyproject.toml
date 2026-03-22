@@ -18,6 +18,8 @@ dependencies = [
   "beautifulsoup4>=4.12.3",
   "python-dotenv>=1.0.1",
   "apify-client>=2.5.0",
+  "slack-bolt>=1.21.0",
+  "aiohttp>=3.11.0",
 ]
 
 [dependency-groups]
