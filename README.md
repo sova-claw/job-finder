@@ -98,13 +98,20 @@ Optional separate utility:
 - `Claude Code` acts as planner
 - `Codex` acts as executor
 - Slack thread is the shared coordination surface
-- supports `orchestrator` mode and `codex-follower` mode
+- supports `orchestrator`, `codex-follower`, and `local-roles` modes
+
+Recommended mode for stable planning context:
+- `local-roles`
+- `@Claude` is handled by the local bridge, not the native Slack Claude app
+- planner context is loaded from `PLANNER_CONTEXT.md` and `PLANNER_MEMORY.md`
+- thread transcript is loaded from local session storage
+- repo state is injected on each planner call
 
 Runner:
 
 ```bash
 cd backend
-uv run python scripts/slack_agent_bridge.py
+PYTHONPATH=. uv run python scripts/slack_agent_bridge.py
 ```
 
 Required env for the bridge:
@@ -112,6 +119,9 @@ Required env for the bridge:
 ```env
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
+BRIDGE_MODE=local-roles
+PLANNER_TRIGGER_PHRASE=@Claude
+CODEX_TRIGGER_PHRASE=@Codex
 PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
 EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}
 ```
@@ -172,6 +182,11 @@ Backlog blueprint:
   - `PLAYBOOK.md`
 - Slack collaboration protocol for Claude + Codex:
   - `SLACK_COLLABORATION.md`
+- Agent bridge architecture:
+  - `AGENT_BRIDGE.md`
+- Planner context:
+  - `PLANNER_CONTEXT.md`
+  - `PLANNER_MEMORY.md`
 - Scraper notes:
   - `SCRAPERS.md`
 - Airtable starter import:

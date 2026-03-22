@@ -1,48 +1,47 @@
 # Slack Agent Bridge
 
-This utility supports two Slack collaboration modes:
+This utility supports three Slack collaboration modes:
 
 - `orchestrator`: the local bridge runs both `Claude Code` and `Codex`
-- `codex-follower`: `Claude` speaks in Slack and the local bridge only runs `Codex` when Claude hands off with `@Codex`
+- `codex-follower`: native `Claude` speaks in Slack and the local bridge runs `Codex`
+- `local-roles`: the local bridge owns both roles and routes `@Claude` and `@Codex`
 
-It is intentionally separate from the `job_finder` runtime.
+For a stable planner context, use `local-roles`.
 
-## Behavior
+## Recommended Architecture
 
-### `orchestrator` mode
+Slack is only the interface.
+The planner state lives in the project:
 
-1. Human writes in a Slack DM or `@mentions` the bot in a thread.
-2. The bridge stores the thread transcript locally.
-3. The bridge invokes `Claude Code` with the transcript and planner instructions.
-4. The planner reply is posted back to the same Slack thread.
-5. The bridge invokes `Codex` with the transcript plus planner handoff.
-6. The executor reply is posted back to the same Slack thread.
+- `PLANNER_CONTEXT.md`
+  - long-lived product and role context
+- `PLANNER_MEMORY.md`
+  - rolling operational memory
+- `.codex/agent_bridge_sessions.json`
+  - per-thread transcript memory
+- current repo state
+  - branch, status, recent commits
 
-### `codex-follower` mode
+Every planner call receives all four inputs.
 
-1. Human starts a task in a channel thread and tags `@Claude`.
-2. `Claude` replies in-thread with a handoff that includes `@Codex`.
-3. The bridge stores the thread transcript locally.
-4. The bridge detects the planner reply and invokes `Codex`.
-5. `Codex` posts the execution response back to the same thread and asks `@Claude` to review.
+## How Slack Invocation Works
 
-This mode is designed for a visible Slack conversation between the two agents.
+In `local-roles` mode:
+- writing `@Claude ...` in Slack does not require the native Claude app
+- the bridge listens to normal channel message events
+- if a message contains `@Claude`, the bridge runs local `claude`
+- if a message contains `@Codex`, the bridge runs local `codex`
+- after either agent has participated in a thread, plain follow-ups in that thread continue the same role unless redirected
 
-## Files
+This gives you one planner context across many tasks.
 
-- `backend/app/agent_bridge/config.py`
-- `backend/app/agent_bridge/session_store.py`
-- `backend/app/agent_bridge/service.py`
-- `backend/scripts/slack_agent_bridge.py`
-
-## Required environment variables
+## Required Environment Variables
 
 ```env
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
-BRIDGE_MODE=codex-follower
-PLANNER_BOT_USER_ID=U...
-PLANNER_DISPLAY_NAME=Claude
+BRIDGE_MODE=local-roles
+PLANNER_TRIGGER_PHRASE=@Claude
 CODEX_TRIGGER_PHRASE=@Codex
 PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
 EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}
@@ -51,8 +50,9 @@ EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd
 Optional:
 
 ```env
-PLANNER_BOT_ID=B...
 BRIDGE_WORKDIR=/Users/sova/Desktop/Projects/job_finder
+PLANNER_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/PLANNER_CONTEXT.md
+PLANNER_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/PLANNER_MEMORY.md
 SESSIONS_PATH=/Users/sova/Desktop/Projects/job_finder/.codex/agent_bridge_sessions.json
 MAX_HISTORY_MESSAGES=16
 ```
@@ -62,26 +62,46 @@ MAX_HISTORY_MESSAGES=16
 ```bash
 cd backend
 uv sync --dev
-uv run python scripts/slack_agent_bridge.py
+PYTHONPATH=. uv run python scripts/slack_agent_bridge.py
 ```
 
-## Slack app configuration
+## Slack App Configuration
 
-Use Socket Mode for the starter version.
+Use Socket Mode.
 
-For `codex-follower` mode, invite the bot to the same channel as `@Claude` and configure the planner identity so the bridge can recognize Claude replies.
+Enable bot events:
+- `app_mention`
+- `message.channels`
+- `message.groups`
+- `message.im`
+- `message.mpim`
 
-The app should have:
+Required bot scopes:
 - `app_mentions:read`
-- `channels:history`
 - `chat:write`
+- `channels:history`
+- `groups:history`
 - `im:history`
-- `im:write`
-- Socket Mode enabled
+- `mpim:history`
 
-This starter is intentionally minimal:
-- no streaming edits
-- no resumable subprocess sessions
-- transcript persisted to a local JSON file
+## Recommended Slack Pattern
 
-That keeps it small enough to harden before adding long-lived session plumbing.
+Start a task thread with:
+
+```text
+@Claude plan the next step for the careers scraper.
+```
+
+Then continue with:
+
+```text
+@Codex implement it.
+```
+
+Later in the same thread, plain follow-ups can work too:
+
+```text
+status?
+any blockers?
+refine the plan
+```

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import shlex
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,20 +15,21 @@ from slack_sdk.web.async_client import AsyncWebClient
 from app.agent_bridge.config import BridgeSettings
 from app.agent_bridge.session_store import SessionMessage, ThreadSessionStore
 
-PLANNER_INSTRUCTIONS = """You are Claude Code acting as the planner.
+PLANNER_INSTRUCTIONS = """You are Claude Code acting as the planner for this repository.
 
-Read the Slack thread transcript and produce a compact execution handoff for Codex.
+Use the provided planner context, planner memory, repo state, and Slack thread transcript.
 Respond with these sections only:
 1. Intent
 2. Plan
 3. Risks
 4. Handoff
-Keep it concise and actionable."""
+Keep it concise, continuous with prior work, and execution-ready."""
 
-EXECUTOR_INSTRUCTIONS = """You are Codex acting as the executor.
+EXECUTOR_INSTRUCTIONS = """You are Codex acting as the executor for this repository.
 
-Read the Slack thread transcript plus the planner handoff.
-Respond as the execution agent with:
+Use the provided planner handoff, planner context, planner memory,
+repo state, and Slack thread transcript.
+Respond with these sections only:
 1. What I will do
 2. What I changed or found
 3. Blockers or next steps
@@ -52,9 +55,54 @@ def render_transcript(messages: list[SessionMessage], *, limit: int) -> str:
     return "\n\n".join(chunks)
 
 
-def build_planner_prompt(messages: list[SessionMessage], *, limit: int) -> str:
+def read_text_file(path: str) -> str:
+    file_path = Path(path)
+    if not file_path.exists():
+        return ""
+    return file_path.read_text(encoding="utf-8").strip()
+
+
+async def run_text_command(command: str, *, cwd: Path) -> str:
+    process = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=str(cwd),
+    )
+    stdout, stderr = await process.communicate()
+    if process.returncode != 0:
+        return stderr.decode("utf-8", errors="ignore").strip()
+    return stdout.decode("utf-8", errors="ignore").strip()
+
+
+async def collect_repo_state(cwd: Path) -> str:
+    branch = await run_text_command("git rev-parse --abbrev-ref HEAD", cwd=cwd)
+    status = await run_text_command("git status --short", cwd=cwd)
+    commits = await run_text_command("git log -3 --oneline", cwd=cwd)
+    chunks = [f"Branch: {branch or 'unknown'}"]
+    if commits:
+        chunks.append(f"Recent commits:\n{commits}")
+    if status:
+        chunks.append(f"Working tree:\n{status}")
+    else:
+        chunks.append("Working tree: clean")
+    return "\n\n".join(chunks)
+
+
+def build_planner_prompt(
+    messages: list[SessionMessage],
+    *,
+    settings: BridgeSettings,
+    repo_state: str,
+    limit: int,
+) -> str:
+    planner_context = read_text_file(settings.planner_context_path)
+    planner_memory = read_text_file(settings.planner_memory_path)
     return (
         f"{PLANNER_INSTRUCTIONS}\n\n"
+        f"Planner context:\n{planner_context or '(missing)'}\n\n"
+        f"Planner memory:\n{planner_memory or '(missing)'}\n\n"
+        f"Repo state:\n{repo_state or '(unavailable)'}\n\n"
         f"Slack thread transcript:\n{render_transcript(messages, limit=limit)}"
     )
 
@@ -63,10 +111,17 @@ def build_executor_prompt(
     messages: list[SessionMessage],
     planner_output: str,
     *,
+    settings: BridgeSettings,
+    repo_state: str,
     limit: int,
 ) -> str:
+    planner_context = read_text_file(settings.planner_context_path)
+    planner_memory = read_text_file(settings.planner_memory_path)
     return (
         f"{EXECUTOR_INSTRUCTIONS}\n\n"
+        f"Planner context:\n{planner_context or '(missing)'}\n\n"
+        f"Planner memory:\n{planner_memory or '(missing)'}\n\n"
+        f"Repo state:\n{repo_state or '(unavailable)'}\n\n"
         f"Slack thread transcript:\n{render_transcript(messages, limit=limit)}\n\n"
         f"Planner handoff:\n{planner_output}"
     )
@@ -92,7 +147,11 @@ async def run_agent_command(
         cwd=str(cwd),
     )
     stdout, stderr = await process.communicate(prompt.encode("utf-8"))
-    output_text = output_path.read_text(encoding="utf-8").strip() if output_path.exists() else ""
+    output_text = (
+        output_path.read_text(encoding="utf-8").strip()
+        if output_path.exists()
+        else ""
+    )
     output_path.unlink(missing_ok=True)
 
     if process.returncode != 0:
@@ -119,30 +178,17 @@ async def post_long_message(
         await client.chat_postMessage(channel=channel, thread_ts=thread_ts, text=chunk)
 
 
-def is_planner_event(event: dict, settings: BridgeSettings) -> bool:
-    display_name = settings.planner_display_name.strip().lower()
-    username = str(event.get("username", "")).strip().lower()
-    bot_name = str(event.get("bot_profile", {}).get("name", "")).strip().lower()
-    user_id = str(event.get("user", "")).strip()
-    bot_id = str(event.get("bot_id", "")).strip()
-    return any(
-        [
-            settings.planner_bot_user_id and user_id == settings.planner_bot_user_id,
-            settings.planner_bot_id and bot_id == settings.planner_bot_id,
-            display_name and username == display_name,
-            display_name and bot_name == display_name,
-        ]
-    )
-
-
 def planner_review_suffix(settings: BridgeSettings) -> str:
-    if settings.planner_bot_user_id:
-        return f"<@{settings.planner_bot_user_id}> please review and plan the next step."
-    return "@Claude please review and plan the next step."
+    return f"{settings.planner_trigger_phrase} please review and plan the next step."
 
 
 def mentions_user(raw_text: str, user_id: str) -> bool:
     return bool(user_id and f"<@{user_id}>" in raw_text)
+
+
+def contains_trigger_phrase(cleaned_text: str, trigger_phrase: str) -> bool:
+    phrase = trigger_phrase.strip().lower()
+    return bool(phrase and phrase in cleaned_text.strip().lower())
 
 
 def targets_codex(
@@ -152,29 +198,25 @@ def targets_codex(
     *,
     codex_user_id: str,
 ) -> bool:
-    phrase = settings.codex_trigger_phrase.strip().lower()
-    cleaned = cleaned_text.strip().lower()
     return any(
         [
             mentions_user(raw_text, codex_user_id),
-            phrase and phrase in cleaned,
+            contains_trigger_phrase(cleaned_text, settings.codex_trigger_phrase),
         ]
     )
 
 
 def targets_planner(raw_text: str, cleaned_text: str, settings: BridgeSettings) -> bool:
-    planner_name = settings.planner_display_name.strip().lower()
-    cleaned = cleaned_text.strip().lower()
     return any(
         [
             mentions_user(raw_text, settings.planner_bot_user_id),
-            planner_name and f"@{planner_name}" in cleaned,
+            contains_trigger_phrase(cleaned_text, settings.planner_trigger_phrase),
         ]
     )
 
 
-def thread_has_executor_activity(messages: list[SessionMessage]) -> bool:
-    return any(message.role == "executor" for message in messages)
+def thread_has_role(messages: list[SessionMessage], role: str) -> bool:
+    return any(message.role == role for message in messages)
 
 
 def normalize_event_payload(event: dict) -> dict | None:
@@ -190,23 +232,56 @@ def normalize_event_payload(event: dict) -> dict | None:
     return event
 
 
+def event_dedup_key(event: dict) -> str:
+    digest = hashlib.sha1(
+        "|".join(
+            [
+                str(event.get("channel", "")),
+                str(event.get("thread_ts") or event.get("ts") or ""),
+                str(event.get("ts", "")),
+                str(event.get("user") or event.get("bot_id") or ""),
+                str(event.get("subtype", "")),
+                str(event.get("text", "")),
+            ]
+        ).encode("utf-8")
+    ).hexdigest()
+    return digest
+
+
 def should_trigger_executor(
     *,
-    planner_event: bool,
     raw_text: str,
     cleaned_text: str,
     settings: BridgeSettings,
     codex_user_id: str,
     history: list[SessionMessage],
 ) -> bool:
-    if planner_event:
-        return targets_codex(raw_text, cleaned_text, settings, codex_user_id=codex_user_id)
-
     if targets_codex(raw_text, cleaned_text, settings, codex_user_id=codex_user_id):
         return True
 
-    if thread_has_executor_activity(history) and not targets_planner(
+    if thread_has_role(history, "executor") and not targets_planner(
         raw_text, cleaned_text, settings
+    ):
+        return True
+
+    return False
+
+
+def should_trigger_planner(
+    *,
+    raw_text: str,
+    cleaned_text: str,
+    settings: BridgeSettings,
+    history: list[SessionMessage],
+) -> bool:
+    if targets_planner(raw_text, cleaned_text, settings):
+        return True
+
+    if thread_has_role(history, "planner") and not targets_codex(
+        raw_text,
+        cleaned_text,
+        settings,
+        codex_user_id="",
     ):
         return True
 
@@ -220,6 +295,7 @@ class SlackAgentBridge:
         self.workdir = Path(settings.bridge_workdir)
         self.app = AsyncApp(token=settings.slack_bot_token)
         self.codex_user_id = ""
+        self._recent_events: dict[str, float] = {}
         self._register_handlers()
 
     def _register_handlers(self) -> None:
@@ -237,10 +313,26 @@ class SlackAgentBridge:
             return
         event = normalized
 
+        if self._is_duplicate_event(event):
+            return
+
+        if self.settings.bridge_mode == "local-roles":
+            await self._handle_local_roles_event(event, client=client, logger=logger)
+            return
+
         if self.settings.bridge_mode == "codex-follower":
             await self._handle_codex_follower_event(event, client=client, logger=logger)
             return
 
+        await self._handle_orchestrator_event(event, client=client, logger=logger)
+
+    async def _handle_orchestrator_event(
+        self,
+        event: dict,
+        *,
+        client: AsyncWebClient,
+        logger,
+    ) -> None:
         if event.get("subtype") or event.get("bot_id"):
             return
 
@@ -251,38 +343,99 @@ class SlackAgentBridge:
             return
 
         thread_key = build_thread_key(channel, thread_ts)
-        self.sessions.append(thread_key, role="user", author="Human", content=user_text)
-        history = self.sessions.get(thread_key)
+        self.sessions.upsert(
+            thread_key,
+            role="user",
+            author="Human",
+            content=user_text,
+            message_ts=str(event.get("ts", "")),
+        )
 
         try:
-            planner_reply = await run_agent_command(
-                self.settings.planner_command,
-                build_planner_prompt(history, limit=self.settings.max_history_messages),
-                cwd=self.workdir,
-            )
-            self.sessions.append(
-                thread_key,
-                role="planner",
-                author="Claude planner",
-                content=planner_reply,
-            )
-            await post_long_message(
-                client,
+            await self._run_planner_and_post(
+                client=client,
                 channel=channel,
                 thread_ts=thread_ts,
-                header="Claude planner",
-                content=planner_reply,
+                thread_key=thread_key,
             )
-
+            planner_output = self._last_role_content(thread_key, "planner")
             await self._run_executor_and_post(
                 client=client,
                 channel=channel,
                 thread_ts=thread_ts,
                 thread_key=thread_key,
-                planner_output=planner_reply,
+                planner_output=planner_output,
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception("Slack agent bridge failed: %s", exc)
+            await client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=f"*Bridge error*\n{exc}",
+            )
+
+    async def _handle_local_roles_event(
+        self,
+        event: dict,
+        *,
+        client: AsyncWebClient,
+        logger,
+    ) -> None:
+        if event.get("bot_id") or event.get("subtype"):
+            return
+
+        channel = event.get("channel")
+        thread_ts = event.get("thread_ts") or event.get("ts")
+        if not channel or not thread_ts:
+            return
+
+        raw_text = event.get("text", "")
+        text = self._clean_text(raw_text)
+        if not text:
+            return
+
+        thread_key = build_thread_key(channel, thread_ts)
+        self.sessions.upsert(
+            thread_key,
+            role="user",
+            author="Human",
+            content=text,
+            message_ts=str(event.get("ts", "")),
+        )
+        history = self.sessions.get(thread_key)
+
+        try:
+            if should_trigger_planner(
+                raw_text=raw_text,
+                cleaned_text=text,
+                settings=self.settings,
+                history=history,
+            ):
+                await self._run_planner_and_post(
+                    client=client,
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    thread_key=thread_key,
+                )
+                return
+
+            if should_trigger_executor(
+                raw_text=raw_text,
+                cleaned_text=text,
+                settings=self.settings,
+                codex_user_id=self.codex_user_id,
+                history=history,
+            ):
+                planner_output = self._last_role_content(thread_key, "planner") or text
+                await self._run_executor_and_post(
+                    client=client,
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    thread_key=thread_key,
+                    planner_output=planner_output,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Local roles bridge failed: %s", exc)
             await client.chat_postMessage(
                 channel=channel,
                 thread_ts=thread_ts,
@@ -306,7 +459,12 @@ class SlackAgentBridge:
         if not text:
             return
 
-        planner_event = is_planner_event(event, self.settings)
+        planner_event = (
+            event.get("bot_id") == self.settings.planner_bot_id
+            or mentions_user(raw_text, self.settings.planner_bot_user_id)
+            or str(event.get("username", "")).strip().lower()
+            == self.settings.planner_display_name.strip().lower()
+        )
         if event.get("bot_id") and not planner_event:
             return
         if event.get("subtype") and not planner_event:
@@ -315,11 +473,16 @@ class SlackAgentBridge:
         thread_key = build_thread_key(channel, thread_ts)
         author = "Claude planner" if planner_event else "Human"
         role = "planner" if planner_event else "user"
-        self.sessions.append(thread_key, role=role, author=author, content=text)
+        self.sessions.upsert(
+            thread_key,
+            role=role,
+            author=author,
+            content=text,
+            message_ts=str(event.get("ts", "")),
+        )
         history = self.sessions.get(thread_key)
 
         if not should_trigger_executor(
-            planner_event=planner_event,
             raw_text=raw_text,
             cleaned_text=text,
             settings=self.settings,
@@ -344,6 +507,39 @@ class SlackAgentBridge:
                 text=f"*Bridge error*\n{exc}",
             )
 
+    async def _run_planner_and_post(
+        self,
+        *,
+        client: AsyncWebClient,
+        channel: str,
+        thread_ts: str,
+        thread_key: str,
+    ) -> None:
+        repo_state = await collect_repo_state(self.workdir)
+        planner_reply = await run_agent_command(
+            self.settings.planner_command,
+            build_planner_prompt(
+                self.sessions.get(thread_key),
+                settings=self.settings,
+                repo_state=repo_state,
+                limit=self.settings.max_history_messages,
+            ),
+            cwd=self.workdir,
+        )
+        self.sessions.append(
+            thread_key,
+            role="planner",
+            author="Claude planner",
+            content=planner_reply,
+        )
+        await post_long_message(
+            client,
+            channel=channel,
+            thread_ts=thread_ts,
+            header="Claude planner",
+            content=planner_reply,
+        )
+
     async def _run_executor_and_post(
         self,
         *,
@@ -353,16 +549,19 @@ class SlackAgentBridge:
         thread_key: str,
         planner_output: str,
     ) -> None:
+        repo_state = await collect_repo_state(self.workdir)
         executor_reply = await run_agent_command(
             self.settings.executor_command,
             build_executor_prompt(
                 self.sessions.get(thread_key),
                 planner_output,
+                settings=self.settings,
+                repo_state=repo_state,
                 limit=self.settings.max_history_messages,
             ),
             cwd=self.workdir,
         )
-        if self.settings.bridge_mode == "codex-follower":
+        if self.settings.bridge_mode in {"codex-follower", "local-roles"}:
             executor_reply = f"{executor_reply}\n\n{planner_review_suffix(self.settings)}"
         self.sessions.append(
             thread_key,
@@ -377,6 +576,25 @@ class SlackAgentBridge:
             header="Codex executor",
             content=executor_reply,
         )
+
+    def _last_role_content(self, thread_key: str, role: str) -> str:
+        messages = self.sessions.get(thread_key)
+        for message in reversed(messages):
+            if message.role == role:
+                return message.content
+        return ""
+
+    def _is_duplicate_event(self, event: dict) -> bool:
+        now = time.monotonic()
+        expiry = now - 120
+        self._recent_events = {
+            key: seen_at for key, seen_at in self._recent_events.items() if seen_at >= expiry
+        }
+        key = event_dedup_key(event)
+        if key in self._recent_events:
+            return True
+        self._recent_events[key] = now
+        return False
 
     @staticmethod
     def _clean_text(text: str) -> str:

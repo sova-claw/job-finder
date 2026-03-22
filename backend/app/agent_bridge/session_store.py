@@ -12,6 +12,7 @@ class SessionMessage:
     author: str
     content: str
     created_at: str
+    message_ts: str = ""
 
 
 class ThreadSessionStore:
@@ -31,7 +32,15 @@ class ThreadSessionStore:
     def get(self, thread_key: str) -> list[SessionMessage]:
         return self.load().get(thread_key, [])
 
-    def append(self, thread_key: str, *, role: str, author: str, content: str) -> None:
+    def append(
+        self,
+        thread_key: str,
+        *,
+        role: str,
+        author: str,
+        content: str,
+        message_ts: str = "",
+    ) -> None:
         sessions = self.load()
         sessions.setdefault(thread_key, []).append(
             SessionMessage(
@@ -39,8 +48,49 @@ class ThreadSessionStore:
                 author=author,
                 content=content,
                 created_at=datetime.now(UTC).isoformat(),
+                message_ts=message_ts,
             )
         )
+        self._write(sessions)
+
+    def upsert(
+        self,
+        thread_key: str,
+        *,
+        role: str,
+        author: str,
+        content: str,
+        message_ts: str = "",
+    ) -> None:
+        sessions = self.load()
+        thread = sessions.setdefault(thread_key, [])
+        if message_ts:
+            for index, message in enumerate(thread):
+                if message.message_ts == message_ts and message.role == role:
+                    if message.author == author and message.content == content:
+                        return
+                    thread[index] = SessionMessage(
+                        role=role,
+                        author=author,
+                        content=content,
+                        created_at=message.created_at,
+                        message_ts=message_ts,
+                    )
+                    self._write(sessions)
+                    return
+
+        thread.append(
+            SessionMessage(
+                role=role,
+                author=author,
+                content=content,
+                created_at=datetime.now(UTC).isoformat(),
+                message_ts=message_ts,
+            )
+        )
+        self._write(sessions)
+
+    def _write(self, sessions: dict[str, list[SessionMessage]]) -> None:
         self.path.write_text(
             json.dumps(
                 {
