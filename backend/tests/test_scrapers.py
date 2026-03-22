@@ -1,5 +1,5 @@
 from app.scraper.apify_linkedin import build_linkedin_run_inputs, posting_from_linkedin_item
-from app.scraper.bigco import COMPANIES_TARGET
+from app.scraper.bigco import COMPANIES_TARGET, _parse_wix_listings
 from app.scraper.common import dedupe_listings, parse_posted_at
 from app.scraper.djinni import parse_jobposting_scripts
 from app.scraper.hn_jobs import build_hn_comment_url
@@ -40,6 +40,45 @@ def test_bigco_targets_cover_planner_company_list() -> None:
         "Mercury",
         "Rapyd",
         "Brex",
+    ]
+    assert COMPANIES_TARGET["Wix"] == "https://careers.wix.com/positions"
+
+
+def test_parse_wix_listings_reads_role_titles_from_cards() -> None:
+    html = """
+    <div role="listitem">
+      <div data-testid="richTextElement">
+        <p><span>Senior QA Automation Engineer</span></p>
+      </div>
+      <a href="https://careers.wix.com/position/qa-1">Browse positions</a>
+    </div>
+    <div role="listitem">
+      <div data-testid="richTextElement">
+        <p><span>Senior QA Automation Engineer</span></p>
+      </div>
+      <a href="https://careers.wix.com/position/qa-1">Browse positions</a>
+    </div>
+    <div role="listitem">
+      <div data-testid="richTextElement">
+        <p><span>Frontend Engineer</span></p>
+      </div>
+      <a href="https://careers.wix.com/position/frontend-1">Browse positions</a>
+    </div>
+    """
+
+    listings = _parse_wix_listings(
+        html,
+        company="Wix",
+        base_url="https://careers.wix.com/positions",
+    )
+
+    assert listings == [
+        (
+            "https://careers.wix.com/position/qa-1",
+            "Senior QA Automation Engineer",
+            "Wix",
+            None,
+        )
     ]
 
 

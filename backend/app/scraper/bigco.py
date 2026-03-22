@@ -6,6 +6,7 @@ from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
+from playwright.async_api import Error as PlaywrightError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.scraper.common import (
@@ -13,11 +14,16 @@ from app.scraper.common import (
     dedupe_listings,
     fetch_html,
     parse_posted_at,
+    render_html,
+    render_text,
     save_scraped_posting,
 )
 from app.services.profile import has_role_focus_signal, matches_focus_role
 
 logger = logging.getLogger(__name__)
+GENERIC_LINK_SELECTOR = "a[href*='job'], a[href*='career'], a[href*='position'], a[href*='vacan']"
+WIX_LINK_SELECTOR = "a[href*='/position/']"
+PLAYWRIGHT_REQUIRED = {"Wix"}
 
 COMPANIES_UA = {
     "Grammarly": "https://www.grammarly.com/jobs",
@@ -34,8 +40,8 @@ COMPANIES_TARGET = {
     "JFrog": "https://jfrog.com/careers/",
     "Tipalti": "https://tipalti.com/careers/",
     "monday.com": "https://monday.com/jobs/",
-    # The live Wix careers site is JS-rendered and may need Playwright fallback.
-    "Wix": "https://www.wix.com/jobs",
+    # Wix renders jobs behind a JS-only careers app, so use the canonical positions page.
+    "Wix": "https://careers.wix.com/positions",
     "Forter": "https://forter.com/careers/",
     "Paddle": "https://paddle.com/careers/",
     "Sentry": "https://sentry.io/careers/",
@@ -45,6 +51,47 @@ COMPANIES_TARGET = {
 }
 
 
+async def _fetch_with_playwright(url: str) -> str:
+    return await render_html(url, WIX_LINK_SELECTOR)
+
+
+async def _fetch_wix_text(url: str) -> str:
+    return await render_text(url, "h1")
+
+
+def _parse_wix_listings(
+    html: str,
+    *,
+    company: str,
+    base_url: str,
+) -> list[tuple[str, str, str, datetime | None]]:
+    soup = BeautifulSoup(html, "html.parser")
+    listings: list[tuple[str, str, str, datetime | None]] = []
+
+    for link in soup.select(WIX_LINK_SELECTOR):
+        href = link.get("href")
+        if not href:
+            continue
+
+        container = link.find_parent("div", attrs={"role": "listitem"})
+        if container is None:
+            continue
+
+        title_node = container.find(attrs={"data-testid": "richTextElement"})
+        title = title_node.get_text(" ", strip=True) if title_node is not None else ""
+        container_text = container.get_text(" ", strip=True)
+        if not title or title.lower() in {"browse positions", "no results found"}:
+            title = container_text.replace("Browse positions", "").strip()
+        if not has_role_focus_signal(f"{title}\n{container_text}"):
+            continue
+
+        listings.append(
+            (urljoin(base_url, href), title, company, parse_posted_at(container_text))
+        )
+
+    return dedupe_listings(listings)[:10]
+
+
 async def scrape_bigco(session: AsyncSession) -> dict[str, int]:
     found = 0
     created = 0
@@ -52,32 +99,47 @@ async def scrape_bigco(session: AsyncSession) -> dict[str, int]:
 
     for company, url in COMPANIES_TARGET.items():
         try:
-            html = await fetch_html(url)
-        except httpx.HTTPError as exc:
+            html = (
+                await _fetch_with_playwright(url)
+                if company in PLAYWRIGHT_REQUIRED
+                else await fetch_html(url)
+            )
+        except (httpx.HTTPError, PlaywrightError) as exc:
             logger.warning(
                 "BigCo source fetch failed",
                 extra={"company": company, "error": str(exc)},
             )
             continue
-        soup = BeautifulSoup(html, "html.parser")
-        links = soup.select(
-            "a[href*='job'], a[href*='career'], a[href*='position'], a[href*='vacan']"
-        )
-        listings: list[tuple[str, str, str, datetime | None]] = []
-        for link in links[:10]:
-            href = link.get("href")
-            if not href:
-                continue
-            job_url = urljoin(url, href)
-            title = link.get_text(" ", strip=True) or f"{company} role"
-            container_text = link.parent.get_text(" ", strip=True) if link.parent else ""
-            if not has_role_focus_signal(f"{title}\n{container_text}"):
-                continue
-            posted_at = parse_posted_at(container_text)
-            listings.append((job_url, title, company, posted_at))
+        if company in PLAYWRIGHT_REQUIRED:
+            listings = _parse_wix_listings(html, company=company, base_url=url)
+            postings = await collect_listing_payloads(
+                listings,
+                source=company,
+                source_group="BigCo",
+                fetch_text_fn=_fetch_wix_text,
+            )
+        else:
+            soup = BeautifulSoup(html, "html.parser")
+            links = soup.select(GENERIC_LINK_SELECTOR)
+            listings: list[tuple[str, str, str, datetime | None]] = []
+            for link in links[:10]:
+                href = link.get("href")
+                if not href:
+                    continue
+                job_url = urljoin(url, href)
+                title = link.get_text(" ", strip=True) or f"{company} role"
+                container_text = link.parent.get_text(" ", strip=True) if link.parent else ""
+                if not has_role_focus_signal(f"{title}\n{container_text}"):
+                    continue
+                posted_at = parse_posted_at(container_text)
+                listings.append((job_url, title, company, posted_at))
 
-        listings = dedupe_listings(listings)
-        postings = await collect_listing_payloads(listings, source=company, source_group="BigCo")
+            listings = dedupe_listings(listings)
+            postings = await collect_listing_payloads(
+                listings,
+                source=company,
+                source_group="BigCo",
+            )
         postings = [
             posting
             for posting in postings

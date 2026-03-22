@@ -4,11 +4,13 @@ import asyncio
 import hashlib
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
 from bs4 import BeautifulSoup
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -123,7 +125,7 @@ async def fetch_text(url: str) -> str:
     return soup.get_text("\n", strip=True)
 
 
-async def render_html(url: str, wait_for: str) -> str:
+async def _render_page(url: str, wait_for: str, *, text_only: bool = False) -> str:
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
             headless=True,
@@ -137,9 +139,19 @@ async def render_html(url: str, wait_for: str) -> str:
                 timeout=int(settings.request_timeout_seconds * 1000),
             )
             await page.wait_for_selector(wait_for, timeout=20_000)
+            if text_only:
+                return await page.locator("body").inner_text()
             return await page.content()
         finally:
             await browser.close()
+
+
+async def render_html(url: str, wait_for: str) -> str:
+    return await _render_page(url, wait_for)
+
+
+async def render_text(url: str, wait_for: str) -> str:
+    return await _render_page(url, wait_for, text_only=True)
 
 
 def split_csv(value: str) -> list[str]:
@@ -165,6 +177,7 @@ async def collect_listing_payloads(
     *,
     source: str,
     source_group: str,
+    fetch_text_fn: Callable[[str], Awaitable[str]] = fetch_text,
 ) -> list[ScrapedPosting]:
     semaphore = asyncio.Semaphore(8)
 
@@ -176,8 +189,8 @@ async def collect_listing_payloads(
     ) -> ScrapedPosting | None:
         async with semaphore:
             try:
-                raw_text = await fetch_text(url)
-            except httpx.HTTPError as exc:
+                raw_text = await fetch_text_fn(url)
+            except (httpx.HTTPError, PlaywrightError) as exc:
                 logger.warning(
                     "Failed to fetch job detail page",
                     extra={"url": url, "error": str(exc)},
