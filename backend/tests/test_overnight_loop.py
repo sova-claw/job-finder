@@ -14,14 +14,24 @@ def test_build_kickoff_message_includes_role_model() -> None:
 
 
 def test_detect_stop_reason_returns_known_signal() -> None:
-    reason = detect_stop_reason("Blockers or next steps\n- Decision needed on Slack routing.")
+    reason = detect_stop_reason(
+        "@Nazar [DECISION NEEDED]\nContext: pick the Slack routing policy."
+    )
 
-    assert reason == "decision needed"
+    assert reason == "@nazar [decision needed]"
 
 
 def test_detect_stop_reason_returns_none_for_clear_progress() -> None:
     reason = detect_stop_reason(
         "What I changed or found\n- Implemented ATS parsing for Greenhouse."
+    )
+
+    assert reason is None
+
+
+def test_detect_stop_reason_ignores_non_blocking_decision_phrase() -> None:
+    reason = detect_stop_reason(
+        "Risks\n- This is not a decision needed now, just a likely follow-up."
     )
 
     assert reason is None

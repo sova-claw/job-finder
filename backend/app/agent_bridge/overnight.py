@@ -17,9 +17,9 @@ from app.agent_bridge.service import (
 from app.agent_bridge.session_store import ThreadSessionStore
 
 STOP_PHRASES = [
-    "decision needed",
-    "need a decision",
-    "needs a decision",
+    "@nazar [decision needed]",
+    "blocked:",
+    "cannot continue without",
     "blocked",
     "cannot continue",
     "can't continue",
