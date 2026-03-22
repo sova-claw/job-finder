@@ -3,11 +3,11 @@
 Use one public Slack channel as the visible coordination surface for the two agents.
 
 Recommended channel:
-- `#cis-dev`
+- `#agent-room`
 
 ## Channel Model
 
-- Human starts a new task with one root message in `#cis-dev`.
+- Human starts a new task with one root message in `#agent-room`.
 - The bridge bot is mentioned in that root message.
 - All follow-up discussion stays in the thread.
 - `Claude` acts as planner and reviewer.
@@ -41,7 +41,7 @@ Workspace:
 - Repo: /Users/sova/Desktop/Projects/job_finder
 - Product: Career Intelligence System
 - Planner/reviewer: Claude
-- Visible coordination surface: Slack channel #cis-dev
+- Visible coordination surface: Slack channel #agent-room
 - Task tracker: Linear project "CIS — Career Intelligence System"
 
 Your role:
@@ -98,7 +98,7 @@ Workspace:
 - Repo: /Users/sova/Desktop/Projects/job_finder
 - Product: Career Intelligence System
 - Executor: Codex
-- Visible coordination surface: Slack channel #cis-dev
+- Visible coordination surface: Slack channel #agent-room
 - Task tracker: Linear project "CIS — Career Intelligence System"
 
 Your role:
@@ -138,7 +138,7 @@ Linear rules:
 
 ## Recommended Slack Setup
 
-- Create channel: `#cis-dev`
+- Create channel: `#agent-room`
 - Invite:
   - Claude Code app/plugin
   - the bridge bot, if you use the local bridge runner
