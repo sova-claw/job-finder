@@ -21,8 +21,10 @@ import {
 } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 
+import { CompaniesPanel } from "@/components/CompaniesPanel";
 import { DetailPanel } from "@/components/DetailPanel";
 import { JobTable } from "@/components/JobTable";
+import { StrategyPanel } from "@/components/StrategyPanel";
 import { TabBar } from "@/components/TabBar";
 import { TopBar } from "@/components/TopBar";
 import { UrlAnalyzer } from "@/components/UrlAnalyzer";
@@ -161,11 +163,14 @@ export default function Page() {
                   <Badge className="border-[var(--signal-green)]/30 bg-[var(--signal-green)]/12 text-[var(--signal-green)]">
                     Live
                   </Badge>
+                  <Badge className="border-white/10 bg-white/6 text-[var(--text-secondary)]">
+                    Airtable + Linear + CIS
+                  </Badge>
                 </div>
                 <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-end md:gap-3">
-                  <h1 className="text-2xl font-semibold text-white md:text-3xl">Job triage dashboard</h1>
+                  <h1 className="text-2xl font-semibold text-white md:text-3xl">Dual-track career OS</h1>
                   <p className="max-w-2xl text-sm text-[var(--text-secondary)]">
-                    Scan fast, isolate the best-fit roles, and keep a live inspector open while you decide what to attack next.
+                    Short-term SDET search, long-term AI portfolio, one operating surface for jobs, companies, and next actions.
                   </p>
                 </div>
               </div>
@@ -179,6 +184,9 @@ export default function Page() {
                 </Badge>
                 <Badge className="border-white/10 bg-white/6 text-[var(--text-secondary)]">
                   Source leader {dominantSource}
+                </Badge>
+                <Badge className="border-white/10 bg-white/6 text-[var(--text-secondary)]">
+                  Strategy layer active
                 </Badge>
               </div>
             </div>
@@ -394,6 +402,11 @@ export default function Page() {
           </div>
 
           <DetailPanel job={selectedJob} onClose={() => setSelectedJobId(null)} />
+        </section>
+
+        <section className="grid gap-4">
+          <StrategyPanel />
+          <CompaniesPanel onSelectJob={setSelectedJobId} />
         </section>
       </div>
     </main>

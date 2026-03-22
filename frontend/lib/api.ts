@@ -1,11 +1,16 @@
 import {
+  AirtableSyncResponse,
   CandidateProfile,
+  CompanyDetail,
+  CompanyListResponse,
   CoverLetterResponse,
   JobDetail,
   JobListResponse,
   MarketInsight,
   JobStats,
   SourceGroup,
+  StrategySnapshot,
+  Track,
   Tone
 } from "@/lib/types";
 
@@ -23,7 +28,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(message || `Request failed: ${response.status}`);
+    const detail = (() => {
+      try {
+        const parsed = JSON.parse(message) as { detail?: string };
+        return parsed.detail;
+      } catch {
+        return undefined;
+      }
+    })();
+    throw new Error(detail || message || `Request failed: ${response.status}`);
   }
 
   return (await response.json()) as T;
@@ -78,4 +91,37 @@ export async function generateCoverLetter(
     method: "POST",
     body: JSON.stringify({ tone })
   });
+}
+
+export async function fetchCompanies(params: {
+  track?: Track;
+  country?: string;
+  search?: string;
+} = {}): Promise<CompanyListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.track) {
+    searchParams.set("track", params.track);
+  }
+  if (params.country) {
+    searchParams.set("country", params.country);
+  }
+  if (params.search) {
+    searchParams.set("search", params.search);
+  }
+  const suffix = searchParams.toString();
+  return request<CompanyListResponse>(`/companies${suffix ? `?${suffix}` : ""}`);
+}
+
+export async function fetchCompany(companyId: string): Promise<CompanyDetail> {
+  return request<CompanyDetail>(`/companies/${companyId}`);
+}
+
+export async function syncAirtableCompanies(): Promise<AirtableSyncResponse> {
+  return request<AirtableSyncResponse>("/sync/airtable", {
+    method: "POST"
+  });
+}
+
+export async function fetchStrategy(): Promise<StrategySnapshot> {
+  return request<StrategySnapshot>("/strategy");
 }

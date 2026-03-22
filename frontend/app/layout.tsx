@@ -5,7 +5,7 @@ import { Providers } from "@/app/providers";
 
 export const metadata: Metadata = {
   title: "Career Intelligence System",
-  description: "AI-driven job intelligence dashboard for Python and ML roles."
+  description: "Dual-track career intelligence dashboard for SDET search, company targeting, and AI portfolio building."
 };
 
 export default function RootLayout({

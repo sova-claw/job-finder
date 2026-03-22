@@ -7,7 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import get_session
-from app.routers import analysis_router, jobs_router, stats_router
+from app.routers import (
+    analysis_router,
+    companies_router,
+    jobs_router,
+    stats_router,
+    strategy_router,
+)
 from app.scraper.scheduler import scheduler_service
 
 settings = get_settings()
@@ -39,6 +45,8 @@ app.add_middleware(
 app.include_router(jobs_router, prefix=settings.api_prefix)
 app.include_router(analysis_router, prefix=settings.api_prefix)
 app.include_router(stats_router, prefix=settings.api_prefix)
+app.include_router(companies_router, prefix=settings.api_prefix)
+app.include_router(strategy_router, prefix=settings.api_prefix)
 
 
 @app.get("/health")

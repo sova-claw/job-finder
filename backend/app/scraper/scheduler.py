@@ -11,6 +11,7 @@ from app.scraper.bigco import scrape_bigco
 from app.scraper.djinni import scrape_djinni
 from app.scraper.dou import scrape_dou
 from app.scraper.hn_jobs import scrape_hn_jobs
+from app.services.company_sync import sync_airtable_companies
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -61,6 +62,24 @@ class SchedulerService:
             except Exception as exc:  # noqa: BLE001
                 logger.exception("HN scrape failed: %s", exc)
 
+    async def run_airtable_sync_job(self) -> None:
+        async with SessionLocal() as session:
+            try:
+                summary = await sync_airtable_companies(session)
+                logger.info(
+                    "airtable sync complete",
+                    extra={
+                        "count_found": summary.count_found,
+                        "count_created": summary.count_created,
+                        "count_updated": summary.count_updated,
+                        "count_skipped": summary.count_skipped,
+                    },
+                )
+            except RuntimeError:
+                logger.info("Airtable sync skipped because Airtable is not configured")
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Airtable sync failed: %s", exc)
+
     def start(self) -> None:
         if self._started:
             return
@@ -97,6 +116,13 @@ class SchedulerService:
             "interval",
             weeks=4,
             id="scrape-hn",
+            replace_existing=True,
+        )
+        self.scheduler.add_job(
+            self.run_airtable_sync_job,
+            "interval",
+            minutes=settings.airtable_sync_interval_minutes,
+            id="sync-airtable",
             replace_existing=True,
         )
         self.scheduler.start()

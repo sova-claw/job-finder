@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     apify_linkedin_remote_codes_csv: str = ""
     apify_linkedin_skip_job_ids_csv: str = ""
     apify_actor_timeout_seconds: int = 240
+    airtable_pat: str = ""
+    airtable_base_id: str = ""
+    airtable_table_companies: str = "Companies"
+    airtable_table_career_sources: str = "Career Sources"
+    airtable_table_recruiters: str = "Recruiters & Agencies"
+    airtable_table_contacts: str = "Contacts"
+    airtable_table_outreach: str = "Outreach"
+    airtable_table_strategy_targets: str = "Strategy Targets"
+    airtable_sync_interval_minutes: int = 60
+    airtable_timeout_seconds: float = 20.0
     cf_tunnel_token: str = ""
     hn_thread_id: str = "42306918"
 

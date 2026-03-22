@@ -1,0 +1,8 @@
+Company,Country,City,Geo bucket,Track fit SDET,Track fit AI,Brand tier,Salary hypothesis,Careers URL,LinkedIn URL,Priority,Status,Notes
+Atlassian,Poland,Krakow,poland,TRUE,TRUE,Tier 1,6k-8k,https://www.atlassian.com/company/careers,https://www.linkedin.com/company/atlassian/,High,Target,Strong long-term AI and platform target. Watch both tracks.
+Bolt,Estonia,Tallinn,remote_emea,FALSE,TRUE,Tier 1,6k-8k,https://careers.bolt.eu/,https://www.linkedin.com/company/bolt-eu/,High,Watchlist,Good AI engineering target and strong product brand.
+Agoda,Thailand,Bangkok,other,FALSE,TRUE,Tier 1,6k-8k,https://careers.agoda.com/,https://www.linkedin.com/company/agoda/,Medium,Watchlist,Relevant for later AI track if relocation becomes realistic.
+Splunk,Poland,Krakow,poland,TRUE,TRUE,Tier 1,6k-8k,https://www.splunk.com/en_us/careers.html,https://www.linkedin.com/company/splunk/,High,Target,Strong brand for both QA automation and platform engineering.
+JFrog,Israel,Tel Aviv,other,TRUE,FALSE,Tier 1,6k+,https://jfrog.com/careers/,https://www.linkedin.com/company/jfrog-ltd/,High,Target,Check careers pages manually and validate relocation or remote options.
+Tipalti,United Kingdom,London,uk,TRUE,FALSE,Tier 2,6k+,https://tipalti.com/company/careers/,https://www.linkedin.com/company/tipalti/,High,Target,SDET track target with strong product signal.
+monday.com,United Kingdom,London,uk,TRUE,TRUE,Tier 1,6k-8k,https://monday.com/careers,https://www.linkedin.com/company/mondaydotcom/,High,Target,Brand-heavy target with potential across both tracks.

@@ -1,6 +1,7 @@
 export type SourceGroup = "All" | "Ukraine" | "BigCo" | "Startups" | "Global";
 export type Tone = "professional" | "direct" | "enthusiastic";
 export type Verdict = "apply_now" | "prepare_first" | "not_aligned";
+export type Track = "sdet_qa" | "ai_engineering";
 
 export interface Gap {
   skill: string;
@@ -84,4 +85,73 @@ export interface CoverLetterResponse {
   profile_tags_used: string[];
   cached: boolean;
   created_at: string | null;
+}
+
+export interface CompanySummary {
+  id: string;
+  airtable_record_id: string;
+  name: string;
+  country: string | null;
+  city: string | null;
+  geo_bucket: string | null;
+  track_fit_sdet: boolean;
+  track_fit_ai: boolean;
+  brand_tier: string | null;
+  salary_hypothesis: string | null;
+  careers_url: string | null;
+  linkedin_url: string | null;
+  priority: string | null;
+  status: string | null;
+  notes: string | null;
+  openings_count: number;
+  priority_score: number;
+  recommended_action: string;
+  last_synced_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CompanyDetail extends CompanySummary {
+  related_jobs: JobSummary[];
+}
+
+export interface CompanyListResponse {
+  items: CompanySummary[];
+  total: number;
+}
+
+export interface AirtableSyncResponse {
+  source: string;
+  count_found: number;
+  count_created: number;
+  count_updated: number;
+  count_skipped: number;
+  synced_at: string;
+}
+
+export interface ToolResponsibility {
+  tool: string;
+  role: string;
+  owns: string[];
+}
+
+export interface StrategyTrack {
+  id: Track;
+  name: string;
+  horizon: string;
+  goal: string;
+  current_focus: string;
+}
+
+export interface StrategyMetric {
+  label: string;
+  value: number;
+}
+
+export interface StrategySnapshot {
+  tracks: StrategyTrack[];
+  tools: ToolResponsibility[];
+  linear_project: string;
+  linear_epics: string[];
+  weekly_loop: string[];
+  metrics: StrategyMetric[];
 }
