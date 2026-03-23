@@ -7,8 +7,10 @@ from urllib.parse import urljoin
 import httpx
 from bs4 import BeautifulSoup
 from playwright.async_api import Error as PlaywrightError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.company import CompanySnapshot
 from app.scraper.common import (
     collect_listing_payloads,
     dedupe_listings,
@@ -49,6 +51,25 @@ COMPANIES_TARGET = {
     "Rapyd": "https://www.rapyd.net/company/careers/",
     "Brex": "https://www.brex.com/careers",
 }
+
+
+def _build_company_targets(companies: list[CompanySnapshot]) -> dict[str, str]:
+    targets: dict[str, str] = {}
+
+    for company in sorted(companies, key=lambda item: item.name.lower()):
+        if not company.careers_url or not (company.track_fit_sdet or company.track_fit_ai):
+            continue
+        targets[company.name] = company.careers_url
+
+    for company, url in COMPANIES_TARGET.items():
+        targets.setdefault(company, url)
+
+    return targets
+
+
+async def _load_company_targets(session: AsyncSession) -> dict[str, str]:
+    result = await session.execute(select(CompanySnapshot))
+    return _build_company_targets(list(result.scalars().all()))
 
 
 async def _fetch_with_playwright(url: str) -> str:
@@ -97,7 +118,9 @@ async def scrape_bigco(session: AsyncSession) -> dict[str, int]:
     created = 0
     skipped = 0
 
-    for company, url in COMPANIES_TARGET.items():
+    company_targets = await _load_company_targets(session)
+
+    for company, url in company_targets.items():
         try:
             html = (
                 await _fetch_with_playwright(url)

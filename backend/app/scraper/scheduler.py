@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.scraper.apify_linkedin import scrape_apify_linkedin
 from app.scraper.bigco import scrape_bigco
+from app.scraper.careers_page import scrape_careers_pages
 from app.scraper.djinni import scrape_djinni
 from app.scraper.dou import scrape_dou
 from app.scraper.hn_jobs import scrape_hn_jobs
@@ -46,6 +47,14 @@ class SchedulerService:
                 logger.info("scrape complete", extra=summary)
             except Exception as exc:  # noqa: BLE001
                 logger.exception("BigCo scrape failed: %s", exc)
+
+    async def run_careers_page_job(self) -> None:
+        async with SessionLocal() as session:
+            try:
+                summary = await scrape_careers_pages(session)
+                logger.info("scrape complete", extra=summary)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Careers-page scrape failed: %s", exc)
 
     async def run_linkedin_job(self) -> None:
         async with SessionLocal() as session:
@@ -120,6 +129,13 @@ class SchedulerService:
             "interval",
             weeks=1,
             id="scrape-bigco",
+            replace_existing=True,
+        )
+        self.scheduler.add_job(
+            self.run_careers_page_job,
+            "interval",
+            weeks=1,
+            id="scrape-careers-page",
             replace_existing=True,
         )
         self.scheduler.add_job(
