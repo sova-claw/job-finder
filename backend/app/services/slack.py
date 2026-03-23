@@ -36,6 +36,14 @@ class JobSlackChannelSummary:
     created_at: datetime | None = None
 
 
+def _job_channel_member_ids() -> list[str]:
+    return [
+        member_id.strip()
+        for member_id in settings.slack_job_channel_member_ids_csv.split(",")
+        if member_id.strip()
+    ]
+
+
 def _format_salary(job: Job) -> str:
     if job.salary_min and job.salary_max:
         return f"${job.salary_min:,}-${job.salary_max:,}"
@@ -150,6 +158,12 @@ def _channel_overrides() -> dict[str, str]:
     return {_normalize_channel_name(key): str(value) for key, value in parsed.items()}
 
 
+def should_auto_create_job_channel(job: Job) -> bool:
+    if job.dealbreaker:
+        return False
+    return (job.match_score or 0) >= settings.slack_job_channel_min_score
+
+
 def build_slack_payload(job: Job, *, routed_channels: list[str] | None = None) -> dict[str, object]:
     title = job.title or "Untitled role"
     company = job.company or "Unknown company"
@@ -162,6 +176,22 @@ def build_slack_payload(job: Job, *, routed_channels: list[str] | None = None) -
     hard_matches = _format_matches(job.hard_matches)
     soft_matches = _format_matches(job.soft_matches)
     routed = ", ".join(routed_channels or []) or "n/a"
+
+    actions: list[dict[str, object]] = [
+        {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Open job"},
+            "url": job.url,
+        }
+    ]
+    if job.slack_channel_id:
+        actions.append(
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Open workspace"},
+                "url": _build_channel_url(job.slack_channel_id),
+            }
+        )
 
     return {
         "text": f"New CIS job: {title} at {company}",
@@ -186,13 +216,7 @@ def build_slack_payload(job: Job, *, routed_channels: list[str] | None = None) -
             },
             {
                 "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "Open job"},
-                        "url": job.url,
-                    }
-                ],
+                "elements": actions,
             },
         ],
     }
@@ -339,6 +363,22 @@ async def ensure_job_slack_channel(
     except SlackApiError:
         pass
 
+    member_ids = _job_channel_member_ids()
+    if member_ids:
+        try:
+            await slack_client.conversations_invite(
+                channel=channel_id,
+                users=",".join(member_ids),
+            )
+        except SlackApiError as exc:
+            if exc.response.get("error") not in {
+                "already_in_channel",
+                "cant_invite_self",
+                "user_is_bot",
+                "already_in_team",
+            }:
+                raise
+
     if created:
         await slack_client.chat_postMessage(
             channel=channel_id,
@@ -363,6 +403,7 @@ async def ensure_job_slack_channel(
 
 
 async def dispatch_job_to_slack(
+    session: AsyncSession,
     job: Job,
     *,
     client: AsyncWebClient | None = None,
@@ -379,6 +420,8 @@ async def dispatch_job_to_slack(
 
     slack_client = client or AsyncWebClient(token=settings.slack_bot_token)
     cache = channel_cache if channel_cache is not None else {}
+    if should_auto_create_job_channel(job):
+        await ensure_job_slack_channel(session, job, client=slack_client)
     payload = build_slack_payload(job, routed_channels=channels)
     for channel in channels:
         await _post_to_channel(slack_client, channel, payload, cache=cache)
@@ -397,7 +440,12 @@ async def dispatch_new_jobs_to_slack(session: AsyncSession) -> SlackDispatchSumm
     client = AsyncWebClient(token=settings.slack_bot_token)
     channel_cache: dict[str, str] = {}
     for job in jobs:
-        channels = await dispatch_job_to_slack(job, client=client, channel_cache=channel_cache)
+        channels = await dispatch_job_to_slack(
+            session,
+            job,
+            client=client,
+            channel_cache=channel_cache,
+        )
         if not channels:
             summary.count_skipped += 1
             continue

@@ -41,6 +41,16 @@ def test_build_slack_payload_contains_key_fields() -> None:
     assert any("#jobs-poland" in field["text"] for field in blocks[1]["fields"])
 
 
+def test_build_slack_payload_adds_workspace_button_when_channel_exists() -> None:
+    payload = slack.build_slack_payload(
+        _job(slack_channel_id="C999"),
+        routed_channels=["#jobs-priority"],
+    )
+
+    actions = payload["blocks"][2]["elements"]
+    assert any(action.get("text", {}).get("text") == "Open workspace" for action in actions)
+
+
 def test_build_job_channel_name_is_slack_safe() -> None:
     name = slack.build_job_channel_name(
         _job(
@@ -55,9 +65,17 @@ def test_build_job_channel_name_is_slack_safe() -> None:
     assert "/" not in name
 
 
+def test_should_auto_create_job_channel_respects_threshold(monkeypatch) -> None:
+    monkeypatch.setattr(slack.settings, "slack_job_channel_min_score", 75)
+
+    assert slack.should_auto_create_job_channel(_job(match_score=75)) is True
+    assert slack.should_auto_create_job_channel(_job(match_score=74)) is False
+
+
 @pytest.mark.asyncio
 async def test_ensure_job_slack_channel_creates_and_persists(monkeypatch) -> None:
     monkeypatch.setattr(slack.settings, "slack_bot_token", "xoxb-test")
+    monkeypatch.setattr(slack.settings, "slack_job_channel_member_ids_csv", "")
 
     calls: list[tuple[str, dict[str, object]]] = []
 
@@ -118,8 +136,14 @@ async def test_dispatch_new_jobs_to_slack_marks_jobs_notified(monkeypatch) -> No
         assert limit == 10
         return jobs
 
-    async def fake_dispatch_job(job: Job, *, client=None, channel_cache=None) -> list[str]:
-        del client, channel_cache
+    async def fake_dispatch_job(
+        _session,
+        job: Job,
+        *,
+        client=None,
+        channel_cache=None,
+    ) -> list[str]:
+        del _session, client, channel_cache
         routed_jobs.append(job.id)
         return ["#jobs-poland"]
 
