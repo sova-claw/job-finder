@@ -270,6 +270,14 @@ def build_jobs_inbox_payload(jobs: list[Job]) -> dict[str, object]:
     if not jobs:
         table = "No active jobs in the inbox right now."
     else:
+        jobs = sorted(
+            jobs,
+            key=lambda job: (
+                job.match_score or 0,
+                job.posted_at or job.scraped_at or datetime.min.replace(tzinfo=UTC),
+            ),
+            reverse=True,
+        )
         header = (
             f"{'Date':<10}  {'Fit':<10}  {'Pri':<3}  {'Salary':<14}  {'Source':<10}  "
             f"{'Company':<18}  {'Role':<28}"

@@ -73,6 +73,19 @@ def test_fit_signal_has_fallbacks_for_score_ranges() -> None:
     assert slack._fit_signal(_job(match_score=None)) == "? unscored"
 
 
+def test_build_jobs_inbox_payload_sorts_highest_score_first() -> None:
+    payload = slack.build_jobs_inbox_payload(
+        [
+            _job(company="LowCo", match_score=40),
+            _job(company="HighCo", match_score=90),
+        ]
+    )
+
+    body = payload["blocks"][1]["text"]["text"]
+
+    assert body.index("HighCo") < body.index("LowCo")
+
+
 def test_build_job_channel_name_is_slack_safe() -> None:
     name = slack.build_job_channel_name(
         _job(
