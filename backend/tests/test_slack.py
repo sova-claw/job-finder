@@ -66,10 +66,18 @@ def test_build_job_channel_name_is_slack_safe() -> None:
 
 
 def test_should_auto_create_job_channel_respects_threshold(monkeypatch) -> None:
+    monkeypatch.setattr(slack.settings, "slack_auto_create_job_channels", True)
     monkeypatch.setattr(slack.settings, "slack_job_channel_min_score", 75)
 
     assert slack.should_auto_create_job_channel(_job(match_score=75)) is True
     assert slack.should_auto_create_job_channel(_job(match_score=74)) is False
+
+
+def test_should_auto_create_job_channel_is_disabled_by_default(monkeypatch) -> None:
+    monkeypatch.setattr(slack.settings, "slack_auto_create_job_channels", False)
+    monkeypatch.setattr(slack.settings, "slack_job_channel_min_score", 75)
+
+    assert slack.should_auto_create_job_channel(_job(match_score=99)) is False
 
 
 @pytest.mark.asyncio

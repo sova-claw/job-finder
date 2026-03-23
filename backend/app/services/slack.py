@@ -177,6 +177,8 @@ def _channel_overrides() -> dict[str, str]:
 
 
 def should_auto_create_job_channel(job: Job) -> bool:
+    if not settings.slack_auto_create_job_channels:
+        return False
     if job.dealbreaker:
         return False
     return (job.match_score or 0) >= settings.slack_job_channel_min_score

@@ -21,18 +21,17 @@ def _job(**overrides: object) -> Job:
 
 def test_route_channels_for_priority_job() -> None:
     assert route_channels_for_job(_job(match_score=90, location="Tel Aviv, Israel")) == [
-        "#jobs-priority",
-        "#jobs-israel",
+        "#jobs-priority"
     ]
 
 
-def test_route_channels_for_country_tier_job() -> None:
-    assert route_channels_for_job(_job(match_score=80, location="London, UK")) == ["#jobs-uk"]
+def test_route_channels_for_strong_job() -> None:
+    assert route_channels_for_job(_job(match_score=80, location="London, UK")) == ["#jobs-priority"]
 
 
-def test_route_channels_for_low_score_job() -> None:
+def test_route_channels_for_backlog_job() -> None:
     assert route_channels_for_job(_job(match_score=60, source="Sentry", source_group="BigCo")) == [
-        "#src-careers-pages"
+        "#jobs-inbox"
     ]
 
 

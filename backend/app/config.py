@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     slack_bot_token: str = ""
     slack_channel_overrides_json: str = ""
     slack_job_channel_prefix: str = "job"
+    slack_auto_create_job_channels: bool = False
     slack_job_channel_min_score: int = 75
     slack_job_channel_member_ids_csv: str = ""
     slack_post_interval_minutes: int = 15
