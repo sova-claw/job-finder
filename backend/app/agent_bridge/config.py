@@ -10,6 +10,7 @@ class BridgeSettings(BaseSettings):
     slack_bot_token: str = ""
     slack_app_token: str = ""
     bridge_mode: Literal["orchestrator", "codex-follower", "local-roles"] = "local-roles"
+    bridge_role: Literal["planner", "executor", "both"] = "both"
     planner_command: str = "claude -p --permission-mode bypassPermissions --model sonnet"
     executor_command: str = (
         "codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}"
@@ -26,6 +27,7 @@ class BridgeSettings(BaseSettings):
     )
     planner_bot_user_id: str = ""
     planner_bot_id: str = ""
+    executor_bot_user_id: str = ""
     planner_display_name: str = "Claude"
     planner_trigger_phrase: str = "@Claude"
     codex_trigger_phrase: str = "@Codex"

@@ -7,6 +7,7 @@ from app.agent_bridge.service import (
     build_thread_key,
     contains_trigger_phrase,
     event_dedup_key,
+    inject_known_mentions,
     normalize_event_payload,
     planner_review_suffix,
     should_trigger_executor,
@@ -106,6 +107,32 @@ def test_planner_review_suffix_in_local_roles_uses_trigger_phrase() -> None:
     assert planner_review_suffix(settings) == "@Claude please review and plan the next step."
 
 
+def test_planner_review_suffix_prefers_real_slack_mention() -> None:
+    settings = BridgeSettings(
+        _env_file=None,
+        bridge_mode="local-roles",
+        planner_trigger_phrase="@Claude",
+        planner_bot_user_id="UCLAUDE",
+    )
+
+    assert planner_review_suffix(settings) == "<@UCLAUDE> please review and plan the next step."
+
+
+def test_inject_known_mentions_rewrites_trigger_phrases() -> None:
+    settings = BridgeSettings(
+        _env_file=None,
+        planner_bot_user_id="UCLAUDE",
+        executor_bot_user_id="UCODEX",
+        planner_trigger_phrase="@Claude",
+        codex_trigger_phrase="@Codex",
+    )
+
+    rewritten = inject_known_mentions("@Codex ship it, then ask @Claude for review.", settings)
+
+    assert "<@UCODEX>" in rewritten
+    assert "<@UCLAUDE>" in rewritten
+
+
 def test_contains_trigger_phrase_normalizes_case() -> None:
     assert contains_trigger_phrase("please ask @claude next", "@Claude") is True
     assert contains_trigger_phrase("hello there", "@Claude") is False
@@ -142,6 +169,7 @@ def test_should_trigger_executor_for_codex_and_thread_follow_up() -> None:
         cleaned_text="@Codex status",
         settings=settings,
         codex_user_id="",
+        planner_user_id="",
         history=history,
     ) is True
     assert should_trigger_executor(
@@ -149,6 +177,7 @@ def test_should_trigger_executor_for_codex_and_thread_follow_up() -> None:
         cleaned_text="status?",
         settings=settings,
         codex_user_id="",
+        planner_user_id="",
         history=history,
     ) is True
 
@@ -168,12 +197,16 @@ def test_should_trigger_planner_for_phrase_and_thread_follow_up() -> None:
         raw_text="@Claude refine this",
         cleaned_text="@Claude refine this",
         settings=settings,
+        planner_user_id="",
+        codex_user_id="",
         history=history,
     ) is True
     assert should_trigger_planner(
         raw_text="one more variant",
         cleaned_text="one more variant",
         settings=settings,
+        planner_user_id="",
+        codex_user_id="",
         history=history,
     ) is True
 

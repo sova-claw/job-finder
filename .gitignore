@@ -13,6 +13,7 @@ frontend/.next/
 frontend/tsconfig.tsbuildinfo
 
 .env
+backend/.env.*
 *.log
 .codex/agent_bridge_sessions.json
 .codex/agent_bridge_events.json

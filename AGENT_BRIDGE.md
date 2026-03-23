@@ -56,6 +56,31 @@ In `local-roles` mode:
 
 This gives you one planner context across many tasks.
 
+## Dual-Bot Mode
+
+If you create separate Slack bots for `Claude` and `Codex`, run two bridge processes that share:
+- the same repo
+- the same session store
+- the same planner memory
+
+Use:
+- `BRIDGE_MODE=local-roles`
+- `BRIDGE_ROLE=planner` for the `Claude` bot
+- `BRIDGE_ROLE=executor` for the `Codex` bot
+
+In this mode:
+- real Slack mentions trigger each bot directly
+- the planner can mention the executor with a real Slack mention
+- the executor can hand review back to the planner with a real Slack mention
+
+Example launch:
+
+```bash
+cd backend
+PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.claude
+PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.codex
+```
+
 ## Night Shift Mode
 
 For an autonomous but bounded overnight run:
@@ -83,6 +108,7 @@ Recommended role model:
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
 BRIDGE_MODE=local-roles
+BRIDGE_ROLE=both
 PLANNER_TRIGGER_PHRASE=@Claude
 CODEX_TRIGGER_PHRASE=@Codex
 PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
@@ -96,6 +122,8 @@ BRIDGE_WORKDIR=/Users/sova/Desktop/Projects/job_finder
 PLANNER_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/PLANNER_CONTEXT.md
 PLANNER_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/PLANNER_MEMORY.md
 SESSIONS_PATH=/Users/sova/Desktop/Projects/job_finder/.codex/agent_bridge_sessions.json
+PLANNER_BOT_USER_ID=
+EXECUTOR_BOT_USER_ID=
 DEFAULT_AGENT_CHANNEL_ID=
 OVERNIGHT_MAX_CYCLES=3
 OVERNIGHT_GOAL=Work the highest-priority unblocked task in the repo, keep tasks bounded, post progress in Slack, and stop when a real blocker or decision is needed.

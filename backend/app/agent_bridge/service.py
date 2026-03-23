@@ -180,7 +180,27 @@ async def post_long_message(
 
 
 def planner_review_suffix(settings: BridgeSettings) -> str:
-    return f"{settings.planner_trigger_phrase} please review and plan the next step."
+    planner_mention = (
+        f"<@{settings.planner_bot_user_id}>"
+        if settings.planner_bot_user_id
+        else settings.planner_trigger_phrase
+    )
+    return f"{planner_mention} please review and plan the next step."
+
+
+def inject_known_mentions(text: str, settings: BridgeSettings) -> str:
+    updated = text
+    if settings.planner_bot_user_id:
+        updated = updated.replace(
+            settings.planner_trigger_phrase,
+            f"<@{settings.planner_bot_user_id}>",
+        )
+    if settings.executor_bot_user_id:
+        updated = updated.replace(
+            settings.codex_trigger_phrase,
+            f"<@{settings.executor_bot_user_id}>",
+        )
+    return updated
 
 
 def mentions_user(raw_text: str, user_id: str) -> bool:
@@ -207,10 +227,17 @@ def targets_codex(
     )
 
 
-def targets_planner(raw_text: str, cleaned_text: str, settings: BridgeSettings) -> bool:
+def targets_planner(
+    raw_text: str,
+    cleaned_text: str,
+    settings: BridgeSettings,
+    *,
+    planner_user_id: str | None = None,
+) -> bool:
+    user_id = planner_user_id if planner_user_id is not None else settings.planner_bot_user_id
     return any(
         [
-            mentions_user(raw_text, settings.planner_bot_user_id),
+            mentions_user(raw_text, user_id),
             contains_trigger_phrase(cleaned_text, settings.planner_trigger_phrase),
         ]
     )
@@ -255,13 +282,17 @@ def should_trigger_executor(
     cleaned_text: str,
     settings: BridgeSettings,
     codex_user_id: str,
+    planner_user_id: str | None = None,
     history: list[SessionMessage],
 ) -> bool:
     if targets_codex(raw_text, cleaned_text, settings, codex_user_id=codex_user_id):
         return True
 
     if thread_has_role(history, "executor") and not targets_planner(
-        raw_text, cleaned_text, settings
+        raw_text,
+        cleaned_text,
+        settings,
+        planner_user_id=planner_user_id,
     ):
         return True
 
@@ -273,16 +304,23 @@ def should_trigger_planner(
     raw_text: str,
     cleaned_text: str,
     settings: BridgeSettings,
+    planner_user_id: str | None = None,
+    codex_user_id: str = "",
     history: list[SessionMessage],
 ) -> bool:
-    if targets_planner(raw_text, cleaned_text, settings):
+    if targets_planner(
+        raw_text,
+        cleaned_text,
+        settings,
+        planner_user_id=planner_user_id,
+    ):
         return True
 
     if thread_has_role(history, "planner") and not targets_codex(
         raw_text,
         cleaned_text,
         settings,
-        codex_user_id="",
+        codex_user_id=codex_user_id,
     ):
         return True
 
@@ -296,7 +334,7 @@ class SlackAgentBridge:
         self.planner_memory = PlannerMemoryStore(settings.planner_memory_path)
         self.workdir = Path(settings.bridge_workdir)
         self.app = AsyncApp(token=settings.slack_bot_token)
-        self.codex_user_id = ""
+        self.bot_user_id = ""
         self._recent_events: dict[str, float] = {}
         self._register_handlers()
 
@@ -316,6 +354,10 @@ class SlackAgentBridge:
         event = normalized
 
         if self._is_duplicate_event(event):
+            return
+
+        if self.settings.bridge_mode == "local-roles" and self.settings.bridge_role != "both":
+            await self._handle_dedicated_role_event(event, client=client, logger=logger)
             return
 
         if self.settings.bridge_mode == "local-roles":
@@ -411,6 +453,8 @@ class SlackAgentBridge:
                 raw_text=raw_text,
                 cleaned_text=text,
                 settings=self.settings,
+                planner_user_id=self.settings.planner_bot_user_id,
+                codex_user_id=self.settings.executor_bot_user_id,
                 history=history,
             ):
                 await self._run_planner_and_post(
@@ -425,7 +469,8 @@ class SlackAgentBridge:
                 raw_text=raw_text,
                 cleaned_text=text,
                 settings=self.settings,
-                codex_user_id=self.codex_user_id,
+                codex_user_id=self.bot_user_id,
+                planner_user_id=self.settings.planner_bot_user_id,
                 history=history,
             ):
                 planner_output = self._last_role_content(thread_key, "planner") or text
@@ -438,6 +483,81 @@ class SlackAgentBridge:
                 )
         except Exception as exc:  # noqa: BLE001
             logger.exception("Local roles bridge failed: %s", exc)
+            await client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=f"*Bridge error*\n{exc}",
+            )
+
+    async def _handle_dedicated_role_event(
+        self,
+        event: dict,
+        *,
+        client: AsyncWebClient,
+        logger,
+    ) -> None:
+        if event.get("bot_id") or event.get("subtype"):
+            return
+
+        channel = event.get("channel")
+        thread_ts = event.get("thread_ts") or event.get("ts")
+        if not channel or not thread_ts:
+            return
+
+        raw_text = event.get("text", "")
+        text = self._clean_text(raw_text)
+        if not text:
+            return
+
+        thread_key = build_thread_key(channel, thread_ts)
+        self.sessions.upsert(
+            thread_key,
+            role="user",
+            author="Human",
+            content=text,
+            message_ts=str(event.get("ts", "")),
+        )
+        history = self.sessions.get(thread_key)
+
+        try:
+            if self.settings.bridge_role == "planner":
+                if not should_trigger_planner(
+                    raw_text=raw_text,
+                    cleaned_text=text,
+                    settings=self.settings,
+                    planner_user_id=self.bot_user_id,
+                    codex_user_id=self.settings.executor_bot_user_id,
+                    history=history,
+                ):
+                    return
+                await self._run_planner_and_post(
+                    client=client,
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    thread_key=thread_key,
+                )
+                return
+
+            if not should_trigger_executor(
+                raw_text=raw_text,
+                cleaned_text=text,
+                settings=self.settings,
+                codex_user_id=self.bot_user_id,
+                planner_user_id=self.settings.planner_bot_user_id,
+                history=history,
+            ):
+                return
+
+            planner_output = self._last_role_content(thread_key, "planner") or text
+            await self._run_executor_and_post(
+                client=client,
+                channel=channel,
+                thread_ts=thread_ts,
+                thread_key=thread_key,
+                planner_output=planner_output,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Dedicated role bridge failed: %s", exc)
             await client.chat_postMessage(
                 channel=channel,
                 thread_ts=thread_ts,
@@ -528,6 +648,7 @@ class SlackAgentBridge:
             ),
             cwd=self.workdir,
         )
+        planner_reply = inject_known_mentions(planner_reply, self.settings)
         self.sessions.append(
             thread_key,
             role="planner",
@@ -564,6 +685,7 @@ class SlackAgentBridge:
             ),
             cwd=self.workdir,
         )
+        executor_reply = inject_known_mentions(executor_reply, self.settings)
         self.planner_memory.record_executor_reply(thread_key, executor_reply)
         if self.settings.bridge_mode in {"codex-follower", "local-roles"}:
             executor_reply = f"{executor_reply}\n\n{planner_review_suffix(self.settings)}"
@@ -608,6 +730,6 @@ class SlackAgentBridge:
         if not self.settings.slack_bot_token or not self.settings.slack_app_token:
             raise RuntimeError("SLACK_BOT_TOKEN and SLACK_APP_TOKEN are required")
         auth = await self.app.client.auth_test()
-        self.codex_user_id = str(auth.get("user_id", ""))
+        self.bot_user_id = str(auth.get("user_id", ""))
         handler = AsyncSocketModeHandler(self.app, self.settings.slack_app_token)
         await handler.start_async()

@@ -115,6 +115,14 @@ cd backend
 PYTHONPATH=. uv run python scripts/slack_agent_bridge.py
 ```
 
+Dual-bot runner:
+
+```bash
+cd backend
+PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.claude
+PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.codex
+```
+
 Night shift runner:
 
 ```bash
