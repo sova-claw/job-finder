@@ -43,6 +43,7 @@ class BridgeSettings(BaseSettings):
     )
     planner_bot_user_id: str = ""
     planner_bot_id: str = ""
+    planner_post_token: str = ""
     executor_bot_user_id: str = ""
     specialist_bot_user_id: str = ""
     planner_display_name: str = "Claude"

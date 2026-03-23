@@ -86,6 +86,8 @@ Examples:
 - `@Claude` can hand execution to `@Codex`
 
 The bridge now accepts known bot-authored messages from the other agent bots instead of dropping them.
+For the most reliable baton pass, the executor and specialist bridges can use
+`PLANNER_POST_TOKEN` to post the next planner reply directly as the Claude bot.
 
 ## Dual-Bot / Multi-Bot Mode
 
@@ -126,6 +128,7 @@ SPECIALIST_COMMAND=ollama-api:qwen3.5:9b
 SPECIALIST_OLLAMA_HOST=http://127.0.0.1:11434
 EXECUTOR_DISPLAY_NAME=Codex
 AUTO_SPECIALIST_SUMMARY_THRESHOLD=10
+PLANNER_POST_TOKEN=xoxb-...
 ```
 
 Optional explicit paths:
@@ -140,6 +143,7 @@ SPECIALIST_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/agents/llama/CON
 SPECIALIST_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/agents/llama/MEMORY.md
 SESSIONS_PATH=/Users/sova/Desktop/Projects/job_finder/.codex/agent_bridge_sessions.json
 PLANNER_BOT_USER_ID=
+PLANNER_POST_TOKEN=
 EXECUTOR_BOT_USER_ID=
 SPECIALIST_BOT_USER_ID=
 DEFAULT_AGENT_CHANNEL_ID=

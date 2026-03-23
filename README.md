@@ -110,6 +110,7 @@ Recommended mode for stable planning context:
 - thread transcript is loaded from local session storage
 - repo state is injected on each planner call
 - noisy threads can be auto-compressed by `@Llama` before Claude plans
+- executor and specialist bridges can hand the thread back to Claude directly with `PLANNER_POST_TOKEN`
 - optional night-shift runner can execute bounded `Claude -> Codex` cycles in a new Slack thread
 
 Runner:

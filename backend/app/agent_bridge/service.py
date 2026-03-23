@@ -299,6 +299,15 @@ def planner_review_suffix(settings: BridgeSettings) -> str:
     return f"{planner_mention} please review and plan the next step."
 
 
+def text_targets_planner(text: str, settings: BridgeSettings) -> bool:
+    planner_mention = (
+        f"<@{settings.planner_bot_user_id}>"
+        if settings.planner_bot_user_id
+        else settings.planner_trigger_phrase
+    )
+    return planner_mention in text or settings.planner_trigger_phrase in text
+
+
 def inject_known_mentions(text: str, settings: BridgeSettings) -> str:
     updated = text
     if settings.planner_bot_user_id:
@@ -777,6 +786,8 @@ class SlackAgentBridge:
 
         try:
             if self.settings.bridge_role == "planner":
+                if author_role in {"executor", "specialist"}:
+                    return
                 if not should_trigger_planner(
                     raw_text=raw_text,
                     cleaned_text=text,
@@ -813,6 +824,35 @@ class SlackAgentBridge:
                 )
                 return
 
+            if self.settings.bridge_role == "executor" and author_role == "planner":
+                return
+
+            if author_role == "executor" and targets_planner(
+                raw_text,
+                text,
+                self.settings,
+                planner_user_id=self.settings.planner_bot_user_id,
+            ):
+                await self._run_planner_via_peer_token(
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    thread_key=thread_key,
+                )
+                return
+
+            if author_role == "specialist" and targets_planner(
+                raw_text,
+                text,
+                self.settings,
+                planner_user_id=self.settings.planner_bot_user_id,
+            ):
+                await self._run_planner_via_peer_token(
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    thread_key=thread_key,
+                )
+                return
+
             if not should_trigger_executor(
                 raw_text=raw_text,
                 cleaned_text=text,
@@ -838,6 +878,23 @@ class SlackAgentBridge:
                 thread_ts=thread_ts,
                 text=f"*Bridge error*\n{exc}",
             )
+
+    async def _run_planner_via_peer_token(
+        self,
+        *,
+        channel: str,
+        thread_ts: str,
+        thread_key: str,
+    ) -> None:
+        if not self.settings.planner_post_token:
+            raise RuntimeError("PLANNER_POST_TOKEN is required for peer planner handoff")
+        peer_client = AsyncWebClient(token=self.settings.planner_post_token)
+        await self._run_planner_and_post(
+            client=peer_client,
+            channel=channel,
+            thread_ts=thread_ts,
+            thread_key=thread_key,
+        )
 
     async def _handle_codex_follower_event(
         self,
@@ -992,6 +1049,12 @@ class SlackAgentBridge:
             header="Codex executor",
             content=executor_reply,
         )
+        if self.settings.bridge_role == "executor" and self.settings.planner_post_token:
+            await self._run_planner_via_peer_token(
+                channel=channel,
+                thread_ts=thread_ts,
+                thread_key=thread_key,
+            )
 
     async def _run_specialist_and_post(
         self,
@@ -1031,6 +1094,16 @@ class SlackAgentBridge:
             header=f"{self.settings.specialist_display_name} specialist",
             content=specialist_reply,
         )
+        if (
+            self.settings.bridge_role == "specialist"
+            and self.settings.planner_post_token
+            and text_targets_planner(specialist_reply, self.settings)
+        ):
+            await self._run_planner_via_peer_token(
+                channel=channel,
+                thread_ts=thread_ts,
+                thread_key=thread_key,
+            )
 
     def _last_role_content(self, thread_key: str, role: str) -> str:
         messages = self.sessions.get(thread_key)
