@@ -57,11 +57,20 @@ def test_build_jobs_inbox_payload_has_date_salary_priority_and_source() -> None:
     assert payload["text"] == "Jobs inbox snapshot"
     body = payload["blocks"][1]["text"]["text"]
     assert "Date" in body
+    assert "Fit" in body
     assert "Salary" in body
     assert "Pri" in body
     assert "Source" in body
+    assert "OK strong" in body
     assert "2026-03-22" in body
     assert "Bolt" in body
+
+
+def test_fit_signal_has_fallbacks_for_score_ranges() -> None:
+    assert slack._fit_signal(_job(match_score=82)) == "OK strong"
+    assert slack._fit_signal(_job(match_score=60)) == "! partial"
+    assert slack._fit_signal(_job(match_score=40)) == "X skip"
+    assert slack._fit_signal(_job(match_score=None)) == "? unscored"
 
 
 def test_build_job_channel_name_is_slack_safe() -> None:

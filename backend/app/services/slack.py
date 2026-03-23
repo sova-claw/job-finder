@@ -271,11 +271,11 @@ def build_jobs_inbox_payload(jobs: list[Job]) -> dict[str, object]:
         table = "No active jobs in the inbox right now."
     else:
         header = (
-            f"{'Date':<10}  {'Pri':<3}  {'Salary':<14}  {'Source':<10}  "
+            f"{'Date':<10}  {'Fit':<10}  {'Pri':<3}  {'Salary':<14}  {'Source':<10}  "
             f"{'Company':<18}  {'Role':<28}"
         )
         separator = (
-            f"{'-' * 10}  {'-' * 3}  {'-' * 14}  {'-' * 10}  "
+            f"{'-' * 10}  {'-' * 10}  {'-' * 3}  {'-' * 14}  {'-' * 10}  "
             f"{'-' * 18}  {'-' * 28}"
         )
         rows = [header, separator]
@@ -285,6 +285,7 @@ def build_jobs_inbox_payload(jobs: list[Job]) -> dict[str, object]:
                 "  ".join(
                     [
                         _truncate(added_date, 10),
+                        _truncate(_fit_signal(job), 10),
                         _priority_label(job).ljust(3),
                         _truncate(_format_salary(job), 14),
                         _truncate(job.source or "n/a", 10),
@@ -307,13 +308,24 @@ def build_jobs_inbox_payload(jobs: list[Job]) -> dict[str, object]:
                 "text": {
                     "type": "mrkdwn",
                     "text": (
-                        "Compact backlog view with salary, priority, and source.\n"
+                        "Compact backlog view with fit, salary, priority, and source.\n"
                         f"{table}"
                     ),
                 },
             },
         ],
     }
+
+
+def _fit_signal(job: Job) -> str:
+    score = job.match_score
+    if score is None:
+        return "? unscored"
+    if score >= 80:
+        return "OK strong"
+    if score >= 55:
+        return "! partial"
+    return "X skip"
 
 
 async def list_pending_slack_jobs(session: AsyncSession, *, limit: int) -> list[Job]:
