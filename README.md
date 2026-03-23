@@ -114,6 +114,7 @@ Recommended mode for stable planning context:
 - active planning/development can run for a bounded number of automatic passes via `AUTO_THREAD_MAX_CYCLES`
 - Codex can switch into technical-planner mode and delegate bounded specialist work to Llama
 - human Slack feedback can update Claude's communication guidance in memory
+- the work-cycle runner can post with real Claude/Codex identities and stop on visible planner/executor timeouts
 - optional night-shift runner can execute bounded `Claude -> Codex` cycles in a new Slack thread
 
 Runner:

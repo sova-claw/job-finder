@@ -55,6 +55,8 @@ class BridgeSettings(BaseSettings):
     specialist_trigger_phrase: str = "@Llama"
     default_agent_channel_id: str = ""
     overnight_max_cycles: int = Field(default=3, ge=1, le=12)
+    overnight_planner_timeout_seconds: int = Field(default=180, ge=30, le=1800)
+    overnight_executor_timeout_seconds: int = Field(default=300, ge=30, le=3600)
     overnight_goal: str = (
         "Work the highest-priority unblocked task in the repo, keep tasks bounded, "
         "post progress in Slack, and stop when a real blocker or decision is needed."

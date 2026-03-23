@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,6 +43,12 @@ class OvernightClients:
     planner: AsyncWebClient
     executor: AsyncWebClient
     specialist: AsyncWebClient | None = None
+
+
+@dataclass(slots=True)
+class TimedAgentResult:
+    content: str
+    timed_out: bool = False
 
 
 def build_kickoff_message(goal: str, *, max_cycles: int) -> str:
@@ -122,6 +129,29 @@ def build_overnight_clients(settings: BridgeSettings) -> OvernightClients:
     )
 
 
+async def run_timed_agent_command(
+    command: str,
+    prompt: str,
+    *,
+    cwd: Path,
+    timeout_seconds: int,
+) -> TimedAgentResult:
+    try:
+        content = await asyncio.wait_for(
+            run_agent_command(command, prompt, cwd=cwd),
+            timeout=timeout_seconds,
+        )
+    except TimeoutError:
+        return TimedAgentResult(
+            content=(
+                "Blockers or next steps\n"
+                f"- Timed out after {timeout_seconds}s while waiting for the agent command."
+            ),
+            timed_out=True,
+        )
+    return TimedAgentResult(content=content)
+
+
 async def run_overnight_loop(
     *,
     settings: BridgeSettings,
@@ -158,7 +188,7 @@ async def run_overnight_loop(
 
     for cycle in range(1, max_cycles + 1):
         repo_state = await collect_repo_state(workdir)
-        planner_reply = await run_agent_command(
+        planner_result = await run_timed_agent_command(
             settings.planner_command,
             build_planner_prompt(
                 sessions.get(thread_key),
@@ -168,7 +198,9 @@ async def run_overnight_loop(
             )
             + planner_night_suffix(),
             cwd=workdir,
+            timeout_seconds=settings.overnight_planner_timeout_seconds,
         )
+        planner_reply = planner_result.content
         sessions.append(
             thread_key,
             role="planner",
@@ -186,12 +218,15 @@ async def run_overnight_loop(
         )
 
         planner_stop = detect_stop_reason(planner_reply)
+        if planner_result.timed_out:
+            stopped_reason = "planner:timeout"
+            break
         if planner_stop:
             stopped_reason = f"planner:{planner_stop}"
             break
 
         repo_state = await collect_repo_state(workdir)
-        executor_reply = await run_agent_command(
+        executor_result = await run_timed_agent_command(
             settings.executor_command,
             build_executor_prompt(
                 sessions.get(thread_key),
@@ -202,7 +237,9 @@ async def run_overnight_loop(
             )
             + executor_night_suffix(),
             cwd=workdir,
+            timeout_seconds=settings.overnight_executor_timeout_seconds,
         )
+        executor_reply = executor_result.content
         sessions.append(
             thread_key,
             role="executor",
@@ -231,6 +268,9 @@ async def run_overnight_loop(
                 executor_reply=executor_reply,
             ),
         )
+        if executor_result.timed_out:
+            stopped_reason = "executor:timeout"
+            break
         if executor_stop:
             stopped_reason = f"executor:{executor_stop}"
             break

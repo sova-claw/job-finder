@@ -193,9 +193,17 @@ SPECIALIST_BOT_USER_ID=
 SPECIALIST_POST_TOKEN=
 DEFAULT_AGENT_CHANNEL_ID=
 OVERNIGHT_MAX_CYCLES=3
+OVERNIGHT_PLANNER_TIMEOUT_SECONDS=180
+OVERNIGHT_EXECUTOR_TIMEOUT_SECONDS=300
 OVERNIGHT_GOAL=Work the highest-priority unblocked task in the repo, keep tasks bounded, post progress in Slack, and stop when a real blocker or decision is needed.
 MAX_HISTORY_MESSAGES=16
 ```
+
+The overnight/work-cycle runner now:
+- posts planner turns with the real Claude bot token when `PLANNER_POST_TOKEN` is set
+- posts executor turns with the real Codex bot token
+- posts a compact cycle summary line after executor output
+- stops with a visible timeout reason if planner or executor runs too long
 
 ## Run
 
