@@ -125,6 +125,60 @@ async def test_ensure_job_slack_channel_creates_and_persists(monkeypatch) -> Non
 
 
 @pytest.mark.asyncio
+async def test_ensure_job_slack_channel_invites_members_individually(monkeypatch) -> None:
+    monkeypatch.setattr(slack.settings, "slack_bot_token", "xoxb-test")
+    monkeypatch.setattr(
+        slack.settings,
+        "slack_job_channel_member_ids_csv",
+        "Uhuman,Ubot",
+    )
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class FakeInviteError(Exception):
+        def __init__(self, error: str) -> None:
+            self.response = {"error": error}
+
+    class FakeClient:
+        async def conversations_create(self, *, name: str, is_private: bool):
+            calls.append(("create", {"name": name, "is_private": is_private}))
+            return {"channel": {"id": "C123", "name": name}}
+
+        async def conversations_join(self, *, channel: str):
+            calls.append(("join", {"channel": channel}))
+            return {"ok": True}
+
+        async def conversations_setTopic(self, *, channel: str, topic: str):
+            calls.append(("topic", {"channel": channel, "topic": topic}))
+            return {"ok": True}
+
+        async def conversations_invite(self, *, channel: str, users: str):
+            calls.append(("invite", {"channel": channel, "users": users}))
+            if users == "Ubot":
+                raise FakeInviteError("user_is_bot")
+            return {"ok": True}
+
+        async def chat_postMessage(self, *, channel: str, **payload):
+            calls.append(("post", {"channel": channel, "payload": payload}))
+            return {"ok": True}
+
+    class FakeSession:
+        async def commit(self) -> None:
+            return None
+
+        async def refresh(self, _job: Job) -> None:
+            return None
+
+    monkeypatch.setattr(slack, "SlackApiError", FakeInviteError)
+
+    job = _job(id="job-42", company="Sentry", title="Senior QA Automation Engineer")
+    await slack.ensure_job_slack_channel(FakeSession(), job, client=FakeClient())  # type: ignore[arg-type]
+
+    invite_calls = [payload["users"] for name, payload in calls if name == "invite"]
+    assert invite_calls == ["Uhuman", "Ubot"]
+
+
+@pytest.mark.asyncio
 async def test_dispatch_new_jobs_to_slack_marks_jobs_notified(monkeypatch) -> None:
     monkeypatch.setattr(slack.settings, "slack_bot_token", "xoxb-test")
     monkeypatch.setattr(slack.settings, "slack_max_posts_per_run", 10)

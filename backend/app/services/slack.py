@@ -44,6 +44,24 @@ def _job_channel_member_ids() -> list[str]:
     ]
 
 
+async def _invite_members_to_channel(
+    client: AsyncWebClient,
+    channel_id: str,
+    member_ids: list[str],
+) -> None:
+    for member_id in member_ids:
+        try:
+            await client.conversations_invite(channel=channel_id, users=member_id)
+        except SlackApiError as exc:
+            if exc.response.get("error") not in {
+                "already_in_channel",
+                "cant_invite_self",
+                "user_is_bot",
+                "already_in_team",
+            }:
+                raise
+
+
 def _format_salary(job: Job) -> str:
     if job.salary_min and job.salary_max:
         return f"${job.salary_min:,}-${job.salary_max:,}"
@@ -365,19 +383,7 @@ async def ensure_job_slack_channel(
 
     member_ids = _job_channel_member_ids()
     if member_ids:
-        try:
-            await slack_client.conversations_invite(
-                channel=channel_id,
-                users=",".join(member_ids),
-            )
-        except SlackApiError as exc:
-            if exc.response.get("error") not in {
-                "already_in_channel",
-                "cant_invite_self",
-                "user_is_bot",
-                "already_in_team",
-            }:
-                raise
+        await _invite_members_to_channel(slack_client, channel_id, member_ids)
 
     if created:
         await slack_client.chat_postMessage(
