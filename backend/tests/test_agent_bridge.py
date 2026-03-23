@@ -18,6 +18,7 @@ from app.agent_bridge.service import (
     event_dedup_key,
     extract_ollama_model,
     inject_known_mentions,
+    looks_like_planner_coaching,
     looks_like_planning_request,
     looks_like_status_request,
     normalize_event_payload,
@@ -410,6 +411,40 @@ def test_detect_auto_stop_reason_and_status_request_helpers() -> None:
     assert looks_like_status_request("implement the next step") is False
     assert looks_like_planning_request("plan the next technical step") is True
     assert looks_like_planning_request("give me status") is False
+    assert looks_like_planner_coaching("Claude is too technical and should be shorter.") is True
+    assert looks_like_planner_coaching("please ship the parser") is False
+
+
+def test_human_planner_feedback_is_recorded_from_thread_context(tmp_path: Path) -> None:
+    settings = BridgeSettings(
+        _env_file=None,
+        planner_trigger_phrase="@Claude",
+        slack_bot_token="xoxb-test",
+        planner_memory_path=str(tmp_path / "PLANNER_MEMORY.md"),
+        sessions_path=str(tmp_path / "sessions.json"),
+    )
+    bridge = SlackAgentBridge(settings)
+    thread_key = build_thread_key("C123", "171.222")
+    bridge.sessions.append(
+        thread_key,
+        role="planner",
+        author="Claude planner",
+        content="Goal\n- Keep the loop stable.",
+    )
+    history = bridge.sessions.get(thread_key)
+
+    bridge._maybe_record_planner_feedback(
+        thread_key=thread_key,
+        raw_text="Claude is too technical and should be shorter.",
+        cleaned_text="Claude is too technical and should be shorter.",
+        author_role="user",
+        history=history,
+    )
+
+    content = Path(settings.planner_memory_path).read_text(encoding="utf-8")
+
+    assert "Reduce technical jargon in planner replies." in content
+    assert "Keep planner replies shorter." in content
 
 
 def test_should_auto_continue_thread_respects_budget_and_stop_signals() -> None:

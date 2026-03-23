@@ -21,6 +21,7 @@ Slack is only the UI. The agent state lives in the repo.
   - stable planner role and operating rules
 - `agents/claude/MEMORY.md`
   - rolling planner memory, updated after planner and executor replies
+  - also updated from human Slack coaching feedback
 - `agents/claude/GOALS.md`
   - current goal, success check, active thread goals, recent progress, open risks
 
@@ -60,6 +61,15 @@ Executor replies follow this packet:
 - `Blockers or next steps`
 
 This keeps the thread aligned around one explicit goal at a time.
+
+Human Slack feedback can also teach Claude over time.
+If a human says things like:
+- be more human-readable
+- reduce technical jargon
+- keep replies shorter
+- stay in planner mode
+
+the bridge records that as planner coaching in `agents/claude/MEMORY.md`.
 
 ## Active Planning / Development
 

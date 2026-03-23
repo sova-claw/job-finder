@@ -13,6 +13,8 @@ def test_planner_memory_store_bootstraps_expected_sections(tmp_path: Path) -> No
     assert "# Planner Memory" in content
     assert "## Current Goal" in content
     assert "## Current Success Check" in content
+    assert "## Current Communication Guidance" in content
+    assert "## Recent Coaching Notes" in content
     assert "## Recent Planner Notes" in content
     assert "## Recent Execution Notes" in content
     assert "## Last Activity" in content
@@ -108,3 +110,43 @@ Handoff
     content = memory_path.read_text(encoding="utf-8")
 
     assert content.count("Keep Slack as UI only.") == 1
+
+
+def test_planner_memory_store_records_human_feedback(tmp_path: Path) -> None:
+    memory_path = tmp_path / "PLANNER_MEMORY.md"
+    store = PlannerMemoryStore(str(memory_path))
+
+    store.record_human_feedback(
+        "C1:100.0",
+        "Claude is too technical. Make him more human readable and shorter.",
+    )
+
+    content = memory_path.read_text(encoding="utf-8")
+
+    assert "## Current Communication Guidance" in content
+    assert "Use more human-readable language." in content
+    assert "Reduce technical jargon in planner replies." in content
+    assert "Keep planner replies shorter." in content
+    assert "## Recent Coaching Notes" in content
+    assert "coaching updated C1:100.0" in content
+
+
+def test_planner_memory_store_accumulates_coaching_feedback(tmp_path: Path) -> None:
+    memory_path = tmp_path / "PLANNER_MEMORY.md"
+    store = PlannerMemoryStore(str(memory_path))
+
+    store.record_human_feedback(
+        "C1:100.0",
+        "Claude is too technical. Make him more human readable.",
+    )
+    store.record_human_feedback(
+        "C1:100.0",
+        "Claude should set goals clearly and stay shorter.",
+    )
+
+    content = memory_path.read_text(encoding="utf-8")
+
+    assert "Use more human-readable language." in content
+    assert "Reduce technical jargon in planner replies." in content
+    assert "Drive the thread with a clear goal and next move." in content
+    assert "Keep planner replies shorter." in content

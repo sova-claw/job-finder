@@ -481,6 +481,26 @@ def looks_like_planning_request(text: str) -> bool:
     )
 
 
+def looks_like_planner_coaching(text: str) -> bool:
+    lowered = text.strip().lower()
+    return any(
+        phrase in lowered
+        for phrase in [
+            "too technical",
+            "less technical",
+            "human readable",
+            "human-readable",
+            "more human",
+            "too long",
+            "shorter",
+            "planner",
+            "drive",
+            "set goal",
+            "set goals",
+        ]
+    )
+
+
 def should_auto_continue_thread(
     messages: list[SessionMessage],
     *,
@@ -687,6 +707,30 @@ class SlackAgentBridge:
         async def handle_message(body: dict, client: AsyncWebClient, logger) -> None:
             await self._handle_event(body.get("event", {}), client=client, logger=logger)
 
+    def _maybe_record_planner_feedback(
+        self,
+        *,
+        thread_key: str,
+        raw_text: str,
+        cleaned_text: str,
+        author_role: str,
+        history: list[SessionMessage],
+    ) -> None:
+        if author_role != "user":
+            return
+        if not looks_like_planner_coaching(cleaned_text):
+            return
+        if (
+            targets_planner(
+                raw_text,
+                cleaned_text,
+                self.settings,
+                planner_user_id=self.settings.planner_bot_user_id,
+            )
+            or thread_has_role(history, "planner")
+        ):
+            self.planner_memory.record_human_feedback(thread_key, cleaned_text)
+
     async def _handle_event(self, event: dict, *, client: AsyncWebClient, logger) -> None:
         normalized = normalize_event_payload(event)
         if normalized is None:
@@ -792,6 +836,13 @@ class SlackAgentBridge:
             message_ts=str(event.get("ts", "")),
         )
         history = self.sessions.get(thread_key)
+        self._maybe_record_planner_feedback(
+            thread_key=thread_key,
+            raw_text=raw_text,
+            cleaned_text=text,
+            author_role=author_role,
+            history=history,
+        )
 
         try:
             if should_trigger_specialist(
@@ -885,6 +936,13 @@ class SlackAgentBridge:
             message_ts=str(event.get("ts", "")),
         )
         history = self.sessions.get(thread_key)
+        self._maybe_record_planner_feedback(
+            thread_key=thread_key,
+            raw_text=raw_text,
+            cleaned_text=text,
+            author_role=author_role,
+            history=history,
+        )
 
         try:
             if self.settings.bridge_role == "planner":

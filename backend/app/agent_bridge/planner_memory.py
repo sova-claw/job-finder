@@ -27,9 +27,11 @@ AUTO_SECTION_ORDER = [
     "Current Focus",
     "Current Goal",
     "Current Success Check",
+    "Current Communication Guidance",
     "Known Working Integrations",
     "Known Gaps",
     "Active Decisions",
+    "Recent Coaching Notes",
     "Recent Planner Notes",
     "Recent Execution Notes",
     "Recent Risks or Blockers",
@@ -42,6 +44,8 @@ AUTO_SECTION_ORDER = [
 class MemoryUpdate:
     current_goal: str | None = None
     current_success_check: str | None = None
+    current_communication_guidance: str | None = None
+    coaching_note: str | None = None
     planner_note: str | None = None
     execution_note: str | None = None
     risk_or_blocker: str | None = None
@@ -88,6 +92,15 @@ def compact_summary(text: str, *, fallback: str = "", limit: int = 180) -> str:
     if len(normalized) <= limit:
         return normalized
     return normalized[: limit - 1].rstrip() + "…"
+
+
+def _split_guidance_items(text: str) -> list[str]:
+    items: list[str] = []
+    for chunk in re.split(r"(?<=[.!?])\s+", text.strip()):
+        normalized = chunk.strip()
+        if normalized:
+            items.append(normalized)
+    return items
 
 
 def _contains_clear_signal(text: str) -> bool:
@@ -150,6 +163,41 @@ def build_executor_update(thread_key: str, content: str) -> MemoryUpdate:
     )
 
 
+def summarize_coaching_feedback(text: str) -> str:
+    lowered = text.lower()
+    notes: list[str] = []
+
+    if "human-readable" in lowered or "human readable" in lowered or "more human" in lowered:
+        notes.append("Use more human-readable language.")
+    if "too technical" in lowered or "less technical" in lowered:
+        notes.append("Reduce technical jargon in planner replies.")
+    if "too long" in lowered or "shorter" in lowered or "short" in lowered:
+        notes.append("Keep planner replies shorter.")
+    if "drive" in lowered or "set goals" in lowered or "set goal" in lowered:
+        notes.append("Drive the thread with a clear goal and next move.")
+    if "planner" in lowered and "execute" not in lowered:
+        notes.append("Stay in planner mode instead of implementation mode.")
+
+    if notes:
+        deduped: list[str] = []
+        for note in notes:
+            if note not in deduped:
+                deduped.append(note)
+        return " ".join(deduped)
+
+    return compact_summary(text)
+
+
+def build_feedback_update(thread_key: str, content: str) -> MemoryUpdate:
+    guidance = summarize_coaching_feedback(content)
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    return MemoryUpdate(
+        current_communication_guidance=guidance,
+        coaching_note=f"{thread_key}: {guidance}" if guidance else None,
+        last_activity=f"{timestamp} coaching updated {thread_key}",
+    )
+
+
 class PlannerMemoryStore:
     def __init__(self, path: str) -> None:
         self.path = Path(path)
@@ -168,6 +216,10 @@ class PlannerMemoryStore:
         self.ensure_exists()
         self._apply_update(build_executor_update(thread_key, content))
 
+    def record_human_feedback(self, thread_key: str, content: str) -> None:
+        self.ensure_exists()
+        self._apply_update(build_feedback_update(thread_key, content))
+
     def _apply_update(self, update: MemoryUpdate) -> None:
         sections = self._parse_sections()
         self._set_single_item(sections, "Current Goal", update.current_goal)
@@ -176,6 +228,12 @@ class PlannerMemoryStore:
             "Current Success Check",
             update.current_success_check,
         )
+        self._merge_guidance_item(
+            sections,
+            "Current Communication Guidance",
+            update.current_communication_guidance,
+        )
+        self._prepend_item(sections, "Recent Coaching Notes", update.coaching_note)
         self._prepend_item(sections, "Recent Planner Notes", update.planner_note)
         self._prepend_item(sections, "Recent Execution Notes", update.execution_note)
         self._prepend_item(
@@ -197,6 +255,8 @@ class PlannerMemoryStore:
             if line.startswith("## "):
                 current = line[3:].strip()
                 sections.setdefault(current, [])
+                continue
+            if not line.strip():
                 continue
             if current is not None:
                 sections.setdefault(current, []).append(line)
@@ -234,6 +294,28 @@ class PlannerMemoryStore:
         if not item:
             return
         sections[title] = [f"- {item}"]
+
+    def _merge_guidance_item(
+        self,
+        sections: dict[str, list[str]],
+        title: str,
+        item: str | None,
+    ) -> None:
+        if not item:
+            return
+        existing = [
+            line[2:].strip()
+            for line in sections.get(title, [])
+            if line.strip().startswith("- ")
+            and line[2:].strip() != "(empty)"
+        ]
+        merged: list[str] = []
+        for guidance in [*existing, item]:
+            for entry in _split_guidance_items(guidance):
+                if entry not in merged:
+                    merged.append(entry)
+        if merged:
+            sections[title] = [f"- {' '.join(merged)}"]
 
     def _render(self, sections: dict[str, list[str]]) -> str:
         lines = ["# Planner Memory", ""]
