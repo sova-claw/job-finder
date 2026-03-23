@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.database import get_session
 from app.routers import alerts as alerts_router_module
-from app.services.slack import SlackDispatchSummary
+from app.services.slack import SlackDispatchSummary, SlackInboxSummary
 from main import app
 
 
@@ -50,5 +50,23 @@ def test_send_slack_alerts_route_handles_missing_config(monkeypatch) -> None:
         response = client.post("/api/alerts/slack/send")
         assert response.status_code == 503
         assert response.json()["detail"] == "Slack is not configured"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_send_slack_inbox_route_returns_summary(monkeypatch) -> None:
+    async def fake_snapshot(_session):
+        return SlackInboxSummary(channel="#jobs-inbox", count_rows=12, posted_at=datetime.now(UTC))
+
+    monkeypatch.setattr(alerts_router_module, "post_jobs_inbox_snapshot", fake_snapshot)
+    app.dependency_overrides[get_session] = _override_session
+    try:
+        client = TestClient(app)
+        response = client.post("/api/alerts/slack/inbox")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["source"] == "Slack Inbox"
+        assert payload["channel"] == "#jobs-inbox"
+        assert payload["count_rows"] == 12
     finally:
         app.dependency_overrides.clear()

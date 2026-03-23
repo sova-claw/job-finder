@@ -9,3 +9,10 @@ class SlackDispatchResponse(BaseModel):
     count_posted: int
     count_skipped: int
     dispatched_at: datetime
+
+
+class SlackInboxSnapshotResponse(BaseModel):
+    source: str = "Slack Inbox"
+    channel: str
+    count_rows: int
+    posted_at: datetime

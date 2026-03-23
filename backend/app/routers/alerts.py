@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
-from app.schemas.alerts import SlackDispatchResponse
-from app.services.slack import dispatch_new_jobs_to_slack
+from app.schemas.alerts import SlackDispatchResponse, SlackInboxSnapshotResponse
+from app.services.slack import dispatch_new_jobs_to_slack, post_jobs_inbox_snapshot
 
 router = APIRouter(tags=["alerts"])
 
@@ -23,4 +23,23 @@ async def send_slack_alerts(session: AsyncSession = Depends(get_session)) -> Sla
         count_posted=summary.count_posted,
         count_skipped=summary.count_skipped,
         dispatched_at=summary.dispatched_at,
+    )
+
+
+@router.post("/alerts/slack/inbox", response_model=SlackInboxSnapshotResponse)
+async def send_slack_inbox_snapshot(
+    session: AsyncSession = Depends(get_session),
+) -> SlackInboxSnapshotResponse:
+    try:
+        summary = await post_jobs_inbox_snapshot(session)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    return SlackInboxSnapshotResponse(
+        channel=summary.channel,
+        count_rows=summary.count_rows,
+        posted_at=summary.posted_at,
     )

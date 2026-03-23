@@ -51,6 +51,19 @@ def test_build_slack_payload_adds_workspace_button_when_channel_exists() -> None
     assert any(action.get("text", {}).get("text") == "Open workspace" for action in actions)
 
 
+def test_build_jobs_inbox_payload_has_date_salary_priority_and_source() -> None:
+    payload = slack.build_jobs_inbox_payload([_job()])
+
+    assert payload["text"] == "Jobs inbox snapshot"
+    body = payload["blocks"][1]["text"]["text"]
+    assert "Date" in body
+    assert "Salary" in body
+    assert "Pri" in body
+    assert "Source" in body
+    assert "2026-03-22" in body
+    assert "Bolt" in body
+
+
 def test_build_job_channel_name_is_slack_safe() -> None:
     name = slack.build_job_channel_name(
         _job(
@@ -227,3 +240,35 @@ async def test_dispatch_new_jobs_to_slack_marks_jobs_notified(monkeypatch) -> No
     assert session.commits == 2
     assert all(job.slack_notified_at is not None for job in jobs)
     assert routed_jobs == ["job-1", "job-2"]
+
+
+@pytest.mark.asyncio
+async def test_post_jobs_inbox_snapshot_posts_to_jobs_inbox(monkeypatch) -> None:
+    monkeypatch.setattr(slack.settings, "slack_bot_token", "xoxb-test")
+
+    jobs = [_job(), _job(id="job-2", company="Agoda", source="DOU")]
+    posted: list[tuple[str, dict[str, object]]] = []
+
+    async def fake_list_inbox_jobs(_session, *, limit: int = 25):
+        assert limit == 25
+        return jobs
+
+    async def fake_post_to_channel(
+        _client,
+        channel_name: str,
+        payload: dict[str, object],
+        *,
+        cache: dict[str, str],
+    ):
+        del _client, cache
+        posted.append((channel_name, payload))
+
+    monkeypatch.setattr(slack, "list_inbox_jobs", fake_list_inbox_jobs)
+    monkeypatch.setattr(slack, "_post_to_channel", fake_post_to_channel)
+
+    summary = await slack.post_jobs_inbox_snapshot(object())  # type: ignore[arg-type]
+
+    assert summary.channel == "#jobs-inbox"
+    assert summary.count_rows == 2
+    assert posted[0][0] == "#jobs-inbox"
+    assert posted[0][1]["text"] == "Jobs inbox snapshot"

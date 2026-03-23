@@ -27,6 +27,13 @@ class SlackDispatchSummary:
 
 
 @dataclass(slots=True)
+class SlackInboxSummary:
+    channel: str
+    count_rows: int
+    posted_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(slots=True)
 class JobSlackChannelSummary:
     job_id: str
     channel_id: str
@@ -84,6 +91,23 @@ def _format_matches(matches: list[str] | None) -> str:
     if not matches:
         return "n/a"
     return ", ".join(matches)
+
+
+def _truncate(value: str, width: int) -> str:
+    if len(value) <= width:
+        return value.ljust(width)
+    if width <= 1:
+        return value[:width]
+    return f"{value[: width - 1]}…"
+
+
+def _priority_label(job: Job) -> str:
+    score = job.match_score or 0
+    if score >= 75:
+        return "P1"
+    if score >= 60:
+        return "P2"
+    return "P3"
 
 
 def _normalize_channel_name(channel: str) -> str:
@@ -242,6 +266,56 @@ def build_slack_payload(job: Job, *, routed_channels: list[str] | None = None) -
     }
 
 
+def build_jobs_inbox_payload(jobs: list[Job]) -> dict[str, object]:
+    if not jobs:
+        table = "No active jobs in the inbox right now."
+    else:
+        header = (
+            f"{'Date':<10}  {'Pri':<3}  {'Salary':<14}  {'Source':<10}  "
+            f"{'Company':<18}  {'Role':<28}"
+        )
+        separator = (
+            f"{'-' * 10}  {'-' * 3}  {'-' * 14}  {'-' * 10}  "
+            f"{'-' * 18}  {'-' * 28}"
+        )
+        rows = [header, separator]
+        for job in jobs:
+            added_date = (job.scraped_at or job.posted_at or datetime.now(UTC)).date().isoformat()
+            rows.append(
+                "  ".join(
+                    [
+                        _truncate(added_date, 10),
+                        _priority_label(job).ljust(3),
+                        _truncate(_format_salary(job), 14),
+                        _truncate(job.source or "n/a", 10),
+                        _truncate(job.company or "Unknown", 18),
+                        _truncate(job.title or "Untitled role", 28),
+                    ]
+                )
+            )
+        table = "```" + "\n".join(rows) + "```"
+
+    return {
+        "text": "Jobs inbox snapshot",
+        "blocks": [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": f"Jobs inbox ({len(jobs)} roles)"},
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        "Compact backlog view with salary, priority, and source.\n"
+                        f"{table}"
+                    ),
+                },
+            },
+        ],
+    }
+
+
 async def list_pending_slack_jobs(session: AsyncSession, *, limit: int) -> list[Job]:
     query: Select[tuple[Job]] = (
         select(Job)
@@ -250,6 +324,24 @@ async def list_pending_slack_jobs(session: AsyncSession, *, limit: int) -> list[
             Job.scored_at.is_not(None),
             Job.slack_notified_at.is_(None),
             Job.source != "Manual",
+            or_(Job.dealbreaker.is_(False), Job.dealbreaker.is_(None)),
+        )
+        .order_by(
+            Job.match_score.desc().nullslast(),
+            Job.posted_at.desc().nullslast(),
+            Job.scraped_at.desc(),
+        )
+        .limit(limit)
+    )
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
+async def list_inbox_jobs(session: AsyncSession, *, limit: int = 25) -> list[Job]:
+    query: Select[tuple[Job]] = (
+        select(Job)
+        .where(
+            Job.is_active.is_(True),
             or_(Job.dealbreaker.is_(False), Job.dealbreaker.is_(None)),
         )
         .order_by(
@@ -462,3 +554,21 @@ async def dispatch_new_jobs_to_slack(session: AsyncSession) -> SlackDispatchSumm
         summary.count_posted += 1
 
     return summary
+
+
+async def post_jobs_inbox_snapshot(session: AsyncSession) -> SlackInboxSummary:
+    if not settings.slack_bot_token:
+        raise RuntimeError(
+            "Slack multichannel routing is not configured. "
+            "Set SLACK_BOT_TOKEN to post the inbox snapshot."
+        )
+
+    jobs = await list_inbox_jobs(session)
+    client = AsyncWebClient(token=settings.slack_bot_token)
+    await _post_to_channel(
+        client,
+        "#jobs-inbox",
+        build_jobs_inbox_payload(jobs),
+        cache={},
+    )
+    return SlackInboxSummary(channel="#jobs-inbox", count_rows=len(jobs))
