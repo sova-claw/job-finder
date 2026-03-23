@@ -1,5 +1,8 @@
+from app.agent_bridge.config import BridgeSettings
 from app.agent_bridge.overnight import (
+    build_cycle_summary,
     build_kickoff_message,
+    build_overnight_clients,
     detect_stop_reason,
 )
 
@@ -35,3 +38,35 @@ def test_detect_stop_reason_ignores_non_blocking_decision_phrase() -> None:
     )
 
     assert reason is None
+
+
+def test_build_overnight_clients_uses_dedicated_bot_tokens() -> None:
+    settings = BridgeSettings(
+        _env_file=None,
+        slack_bot_token="xoxb-codex",
+        planner_post_token="xoxb-claude",
+        specialist_post_token="xoxb-llama",
+    )
+
+    clients = build_overnight_clients(settings)
+
+    assert clients.kickoff.token == "xoxb-codex"
+    assert clients.executor.token == "xoxb-codex"
+    assert clients.planner.token == "xoxb-claude"
+    assert clients.specialist is not None
+    assert clients.specialist.token == "xoxb-llama"
+
+
+def test_build_cycle_summary_compacts_executor_reply() -> None:
+    summary = build_cycle_summary(
+        cycle=1,
+        max_cycles=3,
+        status="continuing",
+        executor_reply=(
+            "Goal\nShip the update.\n\n"
+            "What I changed or found\nAdded a compact cycle summary for Slack threads."
+        ),
+    )
+
+    assert summary.startswith("Cycle 1/3: continuing - ")
+    assert "Added a compact cycle summary" in summary

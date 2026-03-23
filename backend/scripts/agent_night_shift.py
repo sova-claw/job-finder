@@ -3,12 +3,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from app.agent_bridge.config import get_bridge_settings
+from app.agent_bridge.config import BridgeSettings, get_bridge_settings
 from app.agent_bridge.overnight import run_overnight_loop
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run a bounded overnight planner/executor loop")
+    parser.add_argument(
+        "--env-file",
+        default="",
+        help="Optional env file path for the bot/runtime configuration.",
+    )
     parser.add_argument(
         "--channel-id",
         default="",
@@ -31,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
 async def _main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-    settings = get_bridge_settings()
+    settings = BridgeSettings(_env_file=args.env_file) if args.env_file else get_bridge_settings()
 
     channel_id = args.channel_id or settings.default_agent_channel_id
     if not channel_id:

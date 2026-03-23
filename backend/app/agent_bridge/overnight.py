@@ -36,6 +36,14 @@ class OvernightLoopResult:
     stopped_reason: str
 
 
+@dataclass(slots=True)
+class OvernightClients:
+    kickoff: AsyncWebClient
+    planner: AsyncWebClient
+    executor: AsyncWebClient
+    specialist: AsyncWebClient | None = None
+
+
 def build_kickoff_message(goal: str, *, max_cycles: int) -> str:
     return (
         "*Night shift started*\n"
@@ -78,6 +86,42 @@ def detect_stop_reason(text: str) -> str | None:
     return None
 
 
+def build_cycle_summary(
+    *,
+    cycle: int,
+    max_cycles: int,
+    status: str,
+    executor_reply: str,
+) -> str:
+    compact = " ".join(line.strip() for line in executor_reply.splitlines() if line.strip())
+    if len(compact) > 80:
+        compact = compact[:79].rstrip() + "…"
+    return f"Cycle {cycle}/{max_cycles}: {status} - {compact or '(no executor output)'}"
+
+
+def build_overnight_clients(settings: BridgeSettings) -> OvernightClients:
+    if not settings.slack_bot_token:
+        raise RuntimeError("SLACK_BOT_TOKEN is required for overnight Slack runs")
+
+    executor_client = AsyncWebClient(token=settings.slack_bot_token)
+    planner_client = (
+        AsyncWebClient(token=settings.planner_post_token)
+        if settings.planner_post_token
+        else executor_client
+    )
+    specialist_client = (
+        AsyncWebClient(token=settings.specialist_post_token)
+        if settings.specialist_post_token
+        else None
+    )
+    return OvernightClients(
+        kickoff=executor_client,
+        planner=planner_client,
+        executor=executor_client,
+        specialist=specialist_client,
+    )
+
+
 async def run_overnight_loop(
     *,
     settings: BridgeSettings,
@@ -85,14 +129,11 @@ async def run_overnight_loop(
     goal: str,
     max_cycles: int,
 ) -> OvernightLoopResult:
-    if not settings.slack_bot_token:
-        raise RuntimeError("SLACK_BOT_TOKEN is required for overnight Slack runs")
-
-    client = AsyncWebClient(token=settings.slack_bot_token)
+    clients = build_overnight_clients(settings)
     sessions = ThreadSessionStore(settings.sessions_path)
     workdir = Path(settings.bridge_workdir)
 
-    kickoff = await client.chat_postMessage(
+    kickoff = await clients.kickoff.chat_postMessage(
         channel=channel_id,
         text=build_kickoff_message(goal, max_cycles=max_cycles),
     )
@@ -137,7 +178,7 @@ async def run_overnight_loop(
         planner_memory.record_planner_reply(thread_key, planner_reply)
         goal_board.record_planner_reply(thread_key, planner_reply)
         await post_long_message(
-            client,
+            clients.planner,
             channel=channel_id,
             thread_ts=thread_ts,
             header=f"Claude planner · cycle {cycle}",
@@ -171,7 +212,7 @@ async def run_overnight_loop(
         planner_memory.record_executor_reply(thread_key, executor_reply)
         goal_board.record_executor_reply(thread_key, executor_reply)
         await post_long_message(
-            client,
+            clients.executor,
             channel=channel_id,
             thread_ts=thread_ts,
             header=f"Codex executor · cycle {cycle}",
@@ -180,11 +221,21 @@ async def run_overnight_loop(
 
         cycles_completed = cycle
         executor_stop = detect_stop_reason(executor_reply)
+        await clients.executor.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=build_cycle_summary(
+                cycle=cycle,
+                max_cycles=max_cycles,
+                status=executor_stop or "continuing",
+                executor_reply=executor_reply,
+            ),
+        )
         if executor_stop:
             stopped_reason = f"executor:{executor_stop}"
             break
 
-    await client.chat_postMessage(
+    await clients.kickoff.chat_postMessage(
         channel=channel_id,
         thread_ts=thread_ts,
         text=(
