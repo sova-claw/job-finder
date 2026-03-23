@@ -61,6 +61,20 @@ Executor replies follow this packet:
 
 This keeps the thread aligned around one explicit goal at a time.
 
+## Active Planning / Development
+
+With dedicated `Claude` and `Codex` bots, one thread can run a bounded active loop:
+- Claude sets the goal and next task
+- Codex executes one bounded step
+- Codex hands the thread back to Claude
+- Claude can refine the next step
+
+This loop is limited by:
+- `AUTO_THREAD_MAX_CYCLES`
+
+The loop stops early when a reply contains a real blocker or decision-needed signal.
+Status-style questions do not auto-start another execution pass.
+
 ## Automatic Llama Assist
 
 When a thread gets noisy, the planner bridge can auto-run `@Llama` first.
@@ -88,6 +102,24 @@ Examples:
 The bridge now accepts known bot-authored messages from the other agent bots instead of dropping them.
 For the most reliable baton pass, the executor and specialist bridges can use
 `PLANNER_POST_TOKEN` to post the next planner reply directly as the Claude bot.
+For Codex-to-Llama delegation, the executor bridge can use `SPECIALIST_POST_TOKEN`
+to post a specialist reply directly as the Llama bot.
+
+## Codex Planner Mode
+
+Codex can switch into a technical-planner mode when the thread is asking for:
+- planning
+- design
+- discovery
+- options
+- delegation
+
+In that mode, Codex stays technical and can:
+- shape a bounded technical plan
+- ask Claude for product or priority clarification
+- delegate summarize / critique / extraction work to Llama
+
+Claude remains the primary planner for product direction and priority.
 
 ## Dual-Bot / Multi-Bot Mode
 
@@ -129,6 +161,8 @@ SPECIALIST_OLLAMA_HOST=http://127.0.0.1:11434
 EXECUTOR_DISPLAY_NAME=Codex
 AUTO_SPECIALIST_SUMMARY_THRESHOLD=10
 PLANNER_POST_TOKEN=xoxb-...
+SPECIALIST_POST_TOKEN=xoxb-...
+AUTO_THREAD_MAX_CYCLES=2
 ```
 
 Optional explicit paths:
@@ -146,6 +180,7 @@ PLANNER_BOT_USER_ID=
 PLANNER_POST_TOKEN=
 EXECUTOR_BOT_USER_ID=
 SPECIALIST_BOT_USER_ID=
+SPECIALIST_POST_TOKEN=
 DEFAULT_AGENT_CHANNEL_ID=
 OVERNIGHT_MAX_CYCLES=3
 OVERNIGHT_GOAL=Work the highest-priority unblocked task in the repo, keep tasks bounded, post progress in Slack, and stop when a real blocker or decision is needed.

@@ -111,6 +111,8 @@ Recommended mode for stable planning context:
 - repo state is injected on each planner call
 - noisy threads can be auto-compressed by `@Llama` before Claude plans
 - executor and specialist bridges can hand the thread back to Claude directly with `PLANNER_POST_TOKEN`
+- active planning/development can run for a bounded number of automatic passes via `AUTO_THREAD_MAX_CYCLES`
+- Codex can switch into technical-planner mode and delegate bounded specialist work to Llama
 - optional night-shift runner can execute bounded `Claude -> Codex` cycles in a new Slack thread
 
 Runner:
@@ -149,6 +151,8 @@ PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
 EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}
 SPECIALIST_COMMAND=ollama-api:qwen3.5:9b
 SPECIALIST_OLLAMA_HOST=http://127.0.0.1:11434
+SPECIALIST_POST_TOKEN=xoxb-...
+AUTO_THREAD_MAX_CYCLES=2
 AUTO_SPECIALIST_SUMMARY_THRESHOLD=10
 ```
 

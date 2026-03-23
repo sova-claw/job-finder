@@ -1,18 +1,28 @@
 from pathlib import Path
+from unittest.mock import AsyncMock
 
+import pytest
+
+from app.agent_bridge import service as service_module
 from app.agent_bridge.config import BridgeSettings
 from app.agent_bridge.service import (
+    SlackAgentBridge,
     build_executor_prompt,
     build_planner_prompt,
     build_specialist_prompt,
     build_thread_key,
     contains_trigger_phrase,
+    count_role,
+    detect_auto_stop_reason,
     event_author_identity,
     event_dedup_key,
     extract_ollama_model,
     inject_known_mentions,
+    looks_like_planning_request,
+    looks_like_status_request,
     normalize_event_payload,
     planner_review_suffix,
+    should_auto_continue_thread,
     should_auto_summarize_for_planner,
     should_trigger_executor,
     should_trigger_planner,
@@ -364,3 +374,272 @@ def test_event_author_identity_maps_known_bot_users() -> None:
         settings,
         self_bot_user_id="USELF",
     ) == ("specialist", "Llama specialist")
+
+
+def test_count_role_counts_matching_messages() -> None:
+    history = [
+        SessionMessage(
+            created_at="2026-03-22T18:01:00+00:00",
+            author="Claude planner",
+            role="planner",
+            content="Goal",
+        ),
+        SessionMessage(
+            created_at="2026-03-22T18:02:00+00:00",
+            author="Codex executor",
+            role="executor",
+            content="Done 1",
+        ),
+        SessionMessage(
+            created_at="2026-03-22T18:03:00+00:00",
+            author="Codex executor",
+            role="executor",
+            content="Done 2",
+        ),
+    ]
+
+    assert count_role(history, "executor") == 2
+    assert count_role(history, "planner") == 1
+
+
+def test_detect_auto_stop_reason_and_status_request_helpers() -> None:
+    assert detect_auto_stop_reason("Blocked: waiting on Nazar") == "blocked:"
+    assert detect_auto_stop_reason("All clear") is None
+    assert looks_like_status_request("status?") is True
+    assert looks_like_status_request("what changed?") is True
+    assert looks_like_status_request("implement the next step") is False
+    assert looks_like_planning_request("plan the next technical step") is True
+    assert looks_like_planning_request("give me status") is False
+
+
+def test_should_auto_continue_thread_respects_budget_and_stop_signals() -> None:
+    history = [
+        SessionMessage(
+            created_at="2026-03-22T18:01:00+00:00",
+            author="Codex executor",
+            role="executor",
+            content="Cycle 1",
+        )
+    ]
+
+    assert (
+        should_auto_continue_thread(
+            history,
+            max_cycles=2,
+            latest_text="Ship the next bounded change.",
+        )
+        is True
+    )
+    assert (
+        should_auto_continue_thread(
+            history,
+            max_cycles=1,
+            latest_text="Ship the next bounded change.",
+        )
+        is False
+    )
+    assert (
+        should_auto_continue_thread(
+            history,
+            max_cycles=2,
+            latest_text="Blocked: waiting on credentials.",
+        )
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_executor_and_post_in_dedicated_mode_hands_off_to_planner(
+    monkeypatch, tmp_path: Path
+) -> None:
+    settings = BridgeSettings(
+        _env_file=None,
+        bridge_mode="local-roles",
+        bridge_role="executor",
+        planner_post_token="xoxb-planner",
+        slack_bot_token="xoxb-test",
+        sessions_path=str(tmp_path / "sessions.json"),
+    )
+    bridge = SlackAgentBridge(settings)
+    planner_handoff = AsyncMock()
+    thread_key = build_thread_key("C123", "171.222")
+
+    async def fake_collect_repo_state(cwd: Path) -> str:
+        return "Branch: main"
+
+    async def fake_run_agent_command(command_template: str, prompt: str, *, cwd: Path) -> str:
+        return "Executor result"
+
+    async def fake_post_long_message(
+        client, *, channel: str, thread_ts: str, header: str, content: str
+    ) -> None:
+        return None
+
+    monkeypatch.setattr(service_module, "collect_repo_state", fake_collect_repo_state)
+    monkeypatch.setattr(service_module, "run_agent_command", fake_run_agent_command)
+    monkeypatch.setattr(service_module, "post_long_message", fake_post_long_message)
+    monkeypatch.setattr(bridge, "_run_planner_via_peer_token", planner_handoff)
+
+    await bridge._run_executor_and_post(
+        client=object(),
+        channel="C123",
+        thread_ts="171.222",
+        thread_key=thread_key,
+        planner_output="Do one smoke test.",
+        continue_with_planner=True,
+    )
+
+    planner_handoff.assert_awaited_once_with(
+        channel="C123",
+        thread_ts="171.222",
+        thread_key=thread_key,
+    )
+    assert bridge.sessions.get(thread_key)[-1].content == (
+        "Executor result\n\n@Claude please review and plan the next step."
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_executor_and_post_skips_planner_handoff_when_not_continuing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    settings = BridgeSettings(
+        _env_file=None,
+        bridge_mode="local-roles",
+        bridge_role="executor",
+        planner_post_token="xoxb-planner",
+        slack_bot_token="xoxb-test",
+        sessions_path=str(tmp_path / "sessions.json"),
+    )
+    bridge = SlackAgentBridge(settings)
+    planner_handoff = AsyncMock()
+    thread_key = build_thread_key("C123", "171.222")
+
+    async def fake_collect_repo_state(cwd: Path) -> str:
+        return "Branch: main"
+
+    async def fake_run_agent_command(command_template: str, prompt: str, *, cwd: Path) -> str:
+        return "Executor result"
+
+    async def fake_post_long_message(
+        client, *, channel: str, thread_ts: str, header: str, content: str
+    ) -> None:
+        return None
+
+    monkeypatch.setattr(service_module, "collect_repo_state", fake_collect_repo_state)
+    monkeypatch.setattr(service_module, "run_agent_command", fake_run_agent_command)
+    monkeypatch.setattr(service_module, "post_long_message", fake_post_long_message)
+    monkeypatch.setattr(bridge, "_run_planner_via_peer_token", planner_handoff)
+
+    await bridge._run_executor_and_post(
+        client=object(),
+        channel="C123",
+        thread_ts="171.222",
+        thread_key=thread_key,
+        planner_output="Status only.",
+        continue_with_planner=False,
+    )
+
+    planner_handoff.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_planner_via_peer_token_requires_token(tmp_path: Path) -> None:
+    settings = BridgeSettings(
+        _env_file=None,
+        bridge_mode="local-roles",
+        bridge_role="executor",
+        slack_bot_token="xoxb-test",
+        sessions_path=str(tmp_path / "sessions.json"),
+    )
+    bridge = SlackAgentBridge(settings)
+
+    with pytest.raises(RuntimeError, match="PLANNER_POST_TOKEN is required"):
+        await bridge._run_planner_via_peer_token(
+            channel="C123",
+            thread_ts="171.222",
+            thread_key=build_thread_key("C123", "171.222"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_specialist_via_peer_token_requires_token(tmp_path: Path) -> None:
+    settings = BridgeSettings(
+        _env_file=None,
+        bridge_mode="local-roles",
+        bridge_role="executor",
+        slack_bot_token="xoxb-test",
+        sessions_path=str(tmp_path / "sessions.json"),
+    )
+    bridge = SlackAgentBridge(settings)
+
+    with pytest.raises(RuntimeError, match="SPECIALIST_POST_TOKEN is required"):
+        await bridge._run_specialist_via_peer_token(
+            channel="C123",
+            thread_ts="171.222",
+            thread_key=build_thread_key("C123", "171.222"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_codex_planner_and_post_can_delegate_to_peers(
+    monkeypatch, tmp_path: Path
+) -> None:
+    settings = BridgeSettings(
+        _env_file=None,
+        bridge_mode="local-roles",
+        bridge_role="executor",
+        planner_post_token="xoxb-planner",
+        specialist_post_token="xoxb-llama",
+        planner_bot_user_id="UCLAUDE",
+        specialist_bot_user_id="ULLAMA",
+        slack_bot_token="xoxb-test",
+        sessions_path=str(tmp_path / "sessions.json"),
+    )
+    bridge = SlackAgentBridge(settings)
+    planner_handoff = AsyncMock()
+    specialist_handoff = AsyncMock()
+    thread_key = build_thread_key("C123", "171.222")
+
+    async def fake_collect_repo_state(cwd: Path) -> str:
+        return "Branch: main"
+
+    async def fake_run_agent_command(command_template: str, prompt: str, *, cwd: Path) -> str:
+        return (
+            "Goal\n- Tighten the implementation plan.\n\n"
+            "Technical Plan\n- Split the work into one parser change.\n\n"
+            "Claude Question\n- <@UCLAUDE> confirm the success check.\n\n"
+            "Llama Delegation\n- <@ULLAMA> compress the current thread into 3 bullets.\n\n"
+            "Next Check\n- Wait for Claude and Llama, then execute."
+        )
+
+    async def fake_post_long_message(
+        client, *, channel: str, thread_ts: str, header: str, content: str
+    ) -> None:
+        return None
+
+    monkeypatch.setattr(service_module, "collect_repo_state", fake_collect_repo_state)
+    monkeypatch.setattr(service_module, "run_agent_command", fake_run_agent_command)
+    monkeypatch.setattr(service_module, "post_long_message", fake_post_long_message)
+    monkeypatch.setattr(bridge, "_run_planner_via_peer_token", planner_handoff)
+    monkeypatch.setattr(bridge, "_run_specialist_via_peer_token", specialist_handoff)
+
+    await bridge._run_codex_planner_and_post(
+        client=object(),
+        channel="C123",
+        thread_ts="171.222",
+        thread_key=thread_key,
+        prompt_source="Plan the next technical step.",
+    )
+
+    planner_handoff.assert_awaited_once_with(
+        channel="C123",
+        thread_ts="171.222",
+        thread_key=thread_key,
+    )
+    specialist_handoff.assert_awaited_once_with(
+        channel="C123",
+        thread_ts="171.222",
+        thread_key=thread_key,
+    )
+    assert bridge.sessions.get(thread_key)[-1].author == "Codex planner mode"

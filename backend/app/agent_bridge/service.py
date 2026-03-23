@@ -55,6 +55,26 @@ Rules:
 - stay inside the current planner goal
 - prefer one bounded move over broad rewrites"""
 
+EXECUTOR_PLANNER_INSTRUCTIONS = """You are Codex acting in technical-planner mode
+for this repository.
+
+Use the provided executor context, planner context, planner memory, goal board,
+repo state, and Slack thread transcript.
+You can think technically, shape implementation steps, ask Claude for product or priority guidance,
+and delegate bounded specialist work to Llama.
+Do not claim code changes unless they were actually run in this thread.
+Respond with these sections only:
+1. Goal
+2. Technical Plan
+3. Claude Question
+4. Llama Delegation
+5. Next Check
+Rules:
+- keep it concise and technical
+- one bounded technical plan only
+- ask Claude only for priority, tradeoff, or acceptance clarification
+- delegate to Llama only for summarize, critique, or structured extraction"""
+
 SPECIALIST_INSTRUCTIONS = """You are Llama acting as a specialist support agent for this repository.
 
 Use the provided specialist context, specialist memory, planner context, goal board,
@@ -76,6 +96,18 @@ AUTO_SPECIALIST_SUMMARY_DIRECTIVE = """Current request:
 - Help Claude set the next goal and task for this thread
 - Return at most 4 short bullets
 - Focus on goal, blockers, progress, and clean handoff"""
+
+AUTO_STOP_PHRASES = [
+    "@nazar [decision needed]",
+    "blocked:",
+    "cannot continue without",
+    "blocked",
+    "cannot continue",
+    "can't continue",
+    "need clarification",
+    "requires clarification",
+    "waiting on",
+]
 
 
 @dataclass(slots=True)
@@ -158,13 +190,15 @@ def build_executor_prompt(
     settings: BridgeSettings,
     repo_state: str,
     limit: int,
+    planner_mode: bool = False,
 ) -> str:
     executor_context = read_text_file(settings.executor_context_path)
     planner_context = read_text_file(settings.planner_context_path)
     planner_memory = read_text_file(settings.planner_memory_path)
     goal_board = read_text_file(settings.planner_goals_path)
+    instructions = EXECUTOR_PLANNER_INSTRUCTIONS if planner_mode else EXECUTOR_INSTRUCTIONS
     return (
-        f"{EXECUTOR_INSTRUCTIONS}\n\n"
+        f"{instructions}\n\n"
         f"Executor context:\n{executor_context or '(missing)'}\n\n"
         f"Planner context:\n{planner_context or '(missing)'}\n\n"
         f"Planner memory:\n{planner_memory or '(missing)'}\n\n"
@@ -308,6 +342,15 @@ def text_targets_planner(text: str, settings: BridgeSettings) -> bool:
     return planner_mention in text or settings.planner_trigger_phrase in text
 
 
+def text_targets_specialist(text: str, settings: BridgeSettings) -> bool:
+    specialist_mention = (
+        f"<@{settings.specialist_bot_user_id}>"
+        if settings.specialist_bot_user_id
+        else settings.specialist_trigger_phrase
+    )
+    return specialist_mention in text or settings.specialist_trigger_phrase in text
+
+
 def inject_known_mentions(text: str, settings: BridgeSettings) -> str:
     updated = text
     if settings.planner_bot_user_id:
@@ -390,6 +433,65 @@ def targets_specialist(
 
 def thread_has_role(messages: list[SessionMessage], role: str) -> bool:
     return any(message.role == role for message in messages)
+
+
+def count_role(messages: list[SessionMessage], role: str) -> int:
+    return sum(1 for message in messages if message.role == role)
+
+
+def detect_auto_stop_reason(text: str) -> str | None:
+    lowered = text.lower()
+    for phrase in AUTO_STOP_PHRASES:
+        if phrase in lowered:
+            return phrase
+    return None
+
+
+def looks_like_status_request(text: str) -> bool:
+    lowered = text.strip().lower()
+    return any(
+        phrase in lowered
+        for phrase in [
+            "status",
+            "blocker",
+            "blockers",
+            "what changed",
+            "what can you do",
+            "where are we",
+            "progress",
+        ]
+    )
+
+
+def looks_like_planning_request(text: str) -> bool:
+    lowered = text.strip().lower()
+    return any(
+        phrase in lowered
+        for phrase in [
+            "plan",
+            "think",
+            "discover",
+            "design",
+            "options",
+            "delegate",
+            "how should",
+            "what should",
+            "investigate",
+        ]
+    )
+
+
+def should_auto_continue_thread(
+    messages: list[SessionMessage],
+    *,
+    max_cycles: int,
+    latest_text: str,
+) -> bool:
+    if max_cycles <= 0:
+        return False
+    if detect_auto_stop_reason(latest_text):
+        return False
+    return count_role(messages, "executor") < max_cycles
 
 
 def should_auto_summarize_for_planner(
@@ -824,9 +926,6 @@ class SlackAgentBridge:
                 )
                 return
 
-            if self.settings.bridge_role == "executor" and author_role == "planner":
-                return
-
             if author_role == "executor" and targets_planner(
                 raw_text,
                 text,
@@ -853,6 +952,36 @@ class SlackAgentBridge:
                 )
                 return
 
+            if author_role == "executor" and targets_specialist(
+                raw_text,
+                text,
+                self.settings,
+                specialist_user_id=self.settings.specialist_bot_user_id,
+            ):
+                await self._run_specialist_via_peer_token(
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    thread_key=thread_key,
+                )
+                return
+
+            if author_role == "planner":
+                if not should_auto_continue_thread(
+                    history,
+                    max_cycles=self.settings.auto_thread_max_cycles,
+                    latest_text=text,
+                ):
+                    return
+                await self._run_executor_and_post(
+                    client=client,
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    thread_key=thread_key,
+                    planner_output=text,
+                    continue_with_planner=True,
+                )
+                return
+
             if not should_trigger_executor(
                 raw_text=raw_text,
                 cleaned_text=text,
@@ -864,12 +993,31 @@ class SlackAgentBridge:
                 return
 
             planner_output = self._last_role_content(thread_key, "planner") or text
+            if looks_like_planning_request(text):
+                await self._run_codex_planner_and_post(
+                    client=client,
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    thread_key=thread_key,
+                    prompt_source=planner_output,
+                )
+                return
+            should_continue = (
+                not looks_like_status_request(text)
+                and bool(self._last_role_content(thread_key, "planner"))
+                and should_auto_continue_thread(
+                    history,
+                    max_cycles=self.settings.auto_thread_max_cycles,
+                    latest_text=text,
+                )
+            )
             await self._run_executor_and_post(
                 client=client,
                 channel=channel,
                 thread_ts=thread_ts,
                 thread_key=thread_key,
                 planner_output=planner_output,
+                continue_with_planner=should_continue,
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception("Dedicated role bridge failed: %s", exc)
@@ -890,6 +1038,23 @@ class SlackAgentBridge:
             raise RuntimeError("PLANNER_POST_TOKEN is required for peer planner handoff")
         peer_client = AsyncWebClient(token=self.settings.planner_post_token)
         await self._run_planner_and_post(
+            client=peer_client,
+            channel=channel,
+            thread_ts=thread_ts,
+            thread_key=thread_key,
+        )
+
+    async def _run_specialist_via_peer_token(
+        self,
+        *,
+        channel: str,
+        thread_ts: str,
+        thread_key: str,
+    ) -> None:
+        if not self.settings.specialist_post_token:
+            raise RuntimeError("SPECIALIST_POST_TOKEN is required for peer specialist handoff")
+        peer_client = AsyncWebClient(token=self.settings.specialist_post_token)
+        await self._run_specialist_and_post(
             client=peer_client,
             channel=channel,
             thread_ts=thread_ts,
@@ -1018,6 +1183,7 @@ class SlackAgentBridge:
         thread_ts: str,
         thread_key: str,
         planner_output: str,
+        continue_with_planner: bool = False,
     ) -> None:
         repo_state = await collect_repo_state(self.workdir)
         executor_reply = await run_agent_command(
@@ -1049,8 +1215,75 @@ class SlackAgentBridge:
             header="Codex executor",
             content=executor_reply,
         )
-        if self.settings.bridge_role == "executor" and self.settings.planner_post_token:
+        if (
+            continue_with_planner
+            and self.settings.bridge_role == "executor"
+            and self.settings.planner_post_token
+            and not detect_auto_stop_reason(executor_reply)
+        ):
             await self._run_planner_via_peer_token(
+                channel=channel,
+                thread_ts=thread_ts,
+                thread_key=thread_key,
+            )
+        if (
+            self.settings.bridge_role == "executor"
+            and self.settings.specialist_post_token
+            and text_targets_specialist(executor_reply, self.settings)
+        ):
+            await self._run_specialist_via_peer_token(
+                channel=channel,
+                thread_ts=thread_ts,
+                thread_key=thread_key,
+            )
+
+    async def _run_codex_planner_and_post(
+        self,
+        *,
+        client: AsyncWebClient,
+        channel: str,
+        thread_ts: str,
+        thread_key: str,
+        prompt_source: str,
+    ) -> None:
+        repo_state = await collect_repo_state(self.workdir)
+        planner_reply = await run_agent_command(
+            self.settings.executor_command,
+            build_executor_prompt(
+                self.sessions.get(thread_key),
+                prompt_source,
+                settings=self.settings,
+                repo_state=repo_state,
+                limit=self.settings.max_history_messages,
+                planner_mode=True,
+            ),
+            cwd=self.workdir,
+        )
+        planner_reply = inject_known_mentions(planner_reply, self.settings)
+        self.sessions.append(
+            thread_key,
+            role="executor",
+            author="Codex planner mode",
+            content=planner_reply,
+        )
+        await post_long_message(
+            client,
+            channel=channel,
+            thread_ts=thread_ts,
+            header="Codex planner mode",
+            content=planner_reply,
+        )
+        if self.settings.planner_post_token and text_targets_planner(planner_reply, self.settings):
+            await self._run_planner_via_peer_token(
+                channel=channel,
+                thread_ts=thread_ts,
+                thread_key=thread_key,
+            )
+        if (
+            self.settings.specialist_post_token
+            and text_targets_specialist(planner_reply, self.settings)
+        ):
+            await self._run_specialist_via_peer_token(
                 channel=channel,
                 thread_ts=thread_ts,
                 thread_key=thread_key,

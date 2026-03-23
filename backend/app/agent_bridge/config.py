@@ -46,6 +46,7 @@ class BridgeSettings(BaseSettings):
     planner_post_token: str = ""
     executor_bot_user_id: str = ""
     specialist_bot_user_id: str = ""
+    specialist_post_token: str = ""
     planner_display_name: str = "Claude"
     executor_display_name: str = "Codex"
     specialist_display_name: str = "Llama"
@@ -58,6 +59,7 @@ class BridgeSettings(BaseSettings):
         "Work the highest-priority unblocked task in the repo, keep tasks bounded, "
         "post progress in Slack, and stop when a real blocker or decision is needed."
     )
+    auto_thread_max_cycles: int = Field(default=2, ge=0, le=6)
     auto_specialist_summary_threshold: int = Field(default=10, ge=0, le=64)
     max_history_messages: int = Field(default=16, ge=4, le=64)
 
