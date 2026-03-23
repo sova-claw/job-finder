@@ -1,93 +1,30 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-HEADING_NAMES = {
-    "goal",
-    "decision",
-    "task",
-    "success check",
-    "intent",
-    "plan",
-    "risks",
-    "handoff",
-    "what i will do",
-    "what i changed or found",
-    "next check",
-    "blockers or next steps",
-    "mode",
-    "findings",
-    "recommended handoff",
-}
+from app.agent_bridge.planner_memory import compact_summary, extract_section
 
 AUTO_SECTION_ORDER = [
-    "Current Focus",
+    "North Star",
     "Current Goal",
-    "Current Success Check",
-    "Known Working Integrations",
-    "Known Gaps",
-    "Active Decisions",
-    "Recent Planner Notes",
-    "Recent Execution Notes",
-    "Recent Risks or Blockers",
-    "Next Suggested Tasks",
+    "Success Check",
+    "Active Thread Goals",
+    "Recent Progress",
+    "Open Risks",
     "Last Activity",
 ]
 
 
 @dataclass(slots=True)
-class MemoryUpdate:
+class GoalUpdate:
     current_goal: str | None = None
-    current_success_check: str | None = None
-    planner_note: str | None = None
-    execution_note: str | None = None
-    risk_or_blocker: str | None = None
-    next_task: str | None = None
+    success_check: str | None = None
+    active_goal: str | None = None
+    progress: str | None = None
+    open_risk: str | None = None
     last_activity: str | None = None
-
-
-def _canonical_heading(line: str) -> str:
-    cleaned = re.sub(r"^[#*\-\d\.\)\s]+", "", line.strip())
-    return cleaned.rstrip(":").strip().lower()
-
-
-def extract_section(text: str, heading: str) -> str:
-    target = heading.strip().lower()
-    lines = text.splitlines()
-    start_index: int | None = None
-    for index, line in enumerate(lines):
-        if _canonical_heading(line) == target:
-            start_index = index + 1
-            break
-
-    if start_index is None:
-        return ""
-
-    collected: list[str] = []
-    for line in lines[start_index:]:
-        if _canonical_heading(line) in HEADING_NAMES:
-            break
-        collected.append(line)
-
-    return "\n".join(collected).strip()
-
-
-def compact_summary(text: str, *, fallback: str = "", limit: int = 180) -> str:
-    source = text.strip() or fallback.strip()
-    if not source:
-        return ""
-
-    first_line = next((line.strip() for line in source.splitlines() if line.strip()), "")
-    if not first_line:
-        return ""
-
-    normalized = re.sub(r"\s+", " ", first_line).strip(" -*")
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: limit - 1].rstrip() + "…"
 
 
 def _contains_clear_signal(text: str) -> bool:
@@ -106,10 +43,23 @@ def _contains_clear_signal(text: str) -> bool:
     )
 
 
-def build_planner_update(thread_key: str, content: str) -> MemoryUpdate:
+def _compose_active_goal(thread_key: str, goal: str, task: str, success_check: str) -> str:
+    parts = [f"{thread_key}: {goal}"]
+    if task:
+        parts.append(f"task: {task}")
+    if success_check:
+        parts.append(f"success: {success_check}")
+    return " | ".join(parts)
+
+
+def build_planner_goal_update(thread_key: str, content: str) -> GoalUpdate:
     goal = compact_summary(
         extract_section(content, "Goal"),
         fallback=extract_section(content, "Decision"),
+    )
+    task = compact_summary(
+        extract_section(content, "Task"),
+        fallback=extract_section(content, "Handoff"),
     )
     success_check = compact_summary(extract_section(content, "Success check"))
     decision = compact_summary(
@@ -117,40 +67,44 @@ def build_planner_update(thread_key: str, content: str) -> MemoryUpdate:
         fallback=content,
     )
     risks = compact_summary(extract_section(content, "Risks"))
-    handoff = compact_summary(
-        extract_section(content, "Handoff"),
-        fallback=extract_section(content, "Task"),
-    )
     timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-    return MemoryUpdate(
+    return GoalUpdate(
         current_goal=goal,
-        current_success_check=success_check,
-        planner_note=f"{thread_key}: {decision}" if decision else None,
-        risk_or_blocker=f"{thread_key}: {risks}" if risks else None,
-        next_task=f"{thread_key}: {handoff}" if handoff else None,
+        success_check=success_check,
+        active_goal=(
+            _compose_active_goal(thread_key, goal, task, success_check)
+            if goal
+            else None
+        ),
+        progress=f"{thread_key}: {decision}" if decision else None,
+        open_risk=f"{thread_key}: {risks}" if risks else None,
         last_activity=f"{timestamp} planner updated {thread_key}",
     )
 
 
-def build_executor_update(thread_key: str, content: str) -> MemoryUpdate:
+def build_executor_goal_update(thread_key: str, content: str) -> GoalUpdate:
     goal = compact_summary(extract_section(content, "Goal"))
     changed = compact_summary(
         extract_section(content, "What I changed or found"),
         fallback=content,
     )
+    next_check = compact_summary(extract_section(content, "Next check"))
     blockers = compact_summary(extract_section(content, "Blockers or next steps"))
     timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-    return MemoryUpdate(
+    next_check_part = f"next check: {next_check}" if next_check else ""
+    progress_parts = [part for part in [changed, next_check_part] if part]
+    return GoalUpdate(
         current_goal=goal,
-        execution_note=f"{thread_key}: {changed}" if changed else None,
-        risk_or_blocker=(
+        active_goal=f"{thread_key}: {goal}" if goal else None,
+        progress=f"{thread_key}: {' | '.join(progress_parts)}" if progress_parts else None,
+        open_risk=(
             None if _contains_clear_signal(blockers) else f"{thread_key}: {blockers}"
         ),
         last_activity=f"{timestamp} executor updated {thread_key}",
     )
 
 
-class PlannerMemoryStore:
+class GoalBoardStore:
     def __init__(self, path: str) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -162,28 +116,19 @@ class PlannerMemoryStore:
 
     def record_planner_reply(self, thread_key: str, content: str) -> None:
         self.ensure_exists()
-        self._apply_update(build_planner_update(thread_key, content))
+        self._apply_update(build_planner_goal_update(thread_key, content))
 
     def record_executor_reply(self, thread_key: str, content: str) -> None:
         self.ensure_exists()
-        self._apply_update(build_executor_update(thread_key, content))
+        self._apply_update(build_executor_goal_update(thread_key, content))
 
-    def _apply_update(self, update: MemoryUpdate) -> None:
+    def _apply_update(self, update: GoalUpdate) -> None:
         sections = self._parse_sections()
         self._set_single_item(sections, "Current Goal", update.current_goal)
-        self._set_single_item(
-            sections,
-            "Current Success Check",
-            update.current_success_check,
-        )
-        self._prepend_item(sections, "Recent Planner Notes", update.planner_note)
-        self._prepend_item(sections, "Recent Execution Notes", update.execution_note)
-        self._prepend_item(
-            sections,
-            "Recent Risks or Blockers",
-            update.risk_or_blocker,
-        )
-        self._prepend_item(sections, "Next Suggested Tasks", update.next_task)
+        self._set_single_item(sections, "Success Check", update.success_check)
+        self._prepend_item(sections, "Active Thread Goals", update.active_goal)
+        self._prepend_item(sections, "Recent Progress", update.progress)
+        self._prepend_item(sections, "Open Risks", update.open_risk)
         self._set_single_item(sections, "Last Activity", update.last_activity)
         self.path.write_text(self._render(sections), encoding="utf-8")
 
@@ -236,7 +181,7 @@ class PlannerMemoryStore:
         sections[title] = [f"- {item}"]
 
     def _render(self, sections: dict[str, list[str]]) -> str:
-        lines = ["# Planner Memory", ""]
+        lines = ["# Claude Goal Board", ""]
         seen = set()
         for title in AUTO_SECTION_ORDER:
             seen.add(title)
@@ -244,6 +189,11 @@ class PlannerMemoryStore:
             body = sections.get(title, [])
             if body:
                 lines.extend(body)
+            elif title == "North Star":
+                lines.append(
+                    "- Find one remote B2B contract in the $6k-$7k range "
+                    "through a Slack-first operating system."
+                )
             else:
                 lines.append("- (empty)")
             lines.append("")

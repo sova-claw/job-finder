@@ -104,10 +104,12 @@ Optional separate utility:
 Recommended mode for stable planning context:
 - `local-roles`
 - `@Claude` is handled by the local bridge, not the native Slack Claude app
-- planner context is loaded from `PLANNER_CONTEXT.md` and `PLANNER_MEMORY.md`
-- specialist context is loaded from `LLAMA_CONTEXT.md` and `LLAMA_MEMORY.md`
+- planner context is loaded from `agents/claude/CONTEXT.md`, `agents/claude/MEMORY.md`, and `agents/claude/GOALS.md`
+- executor context is loaded from `agents/codex/CONTEXT.md`
+- specialist context is loaded from `agents/llama/CONTEXT.md` and `agents/llama/MEMORY.md`
 - thread transcript is loaded from local session storage
 - repo state is injected on each planner call
+- noisy threads can be auto-compressed by `@Llama` before Claude plans
 - optional night-shift runner can execute bounded `Claude -> Codex` cycles in a new Slack thread
 
 Runner:
@@ -144,8 +146,9 @@ CODEX_TRIGGER_PHRASE=@Codex
 SPECIALIST_TRIGGER_PHRASE=@Llama
 PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
 EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}
-SPECIALIST_COMMAND=ollama-api:llama3.2:3b
+SPECIALIST_COMMAND=ollama-api:qwen3.5:9b
 SPECIALIST_OLLAMA_HOST=http://127.0.0.1:11434
+AUTO_SPECIALIST_SUMMARY_THRESHOLD=10
 ```
 
 ## Airtable Setup
@@ -211,8 +214,14 @@ Backlog blueprint:
 - Agent bridge architecture:
   - `AGENT_BRIDGE.md`
 - Planner context:
-  - `PLANNER_CONTEXT.md`
-  - `PLANNER_MEMORY.md`
+  - `agents/claude/CONTEXT.md`
+  - `agents/claude/MEMORY.md`
+  - `agents/claude/GOALS.md`
+- Executor context:
+  - `agents/codex/CONTEXT.md`
+- Llama context:
+  - `agents/llama/CONTEXT.md`
+  - `agents/llama/MEMORY.md`
 - Scraper notes:
   - `SCRAPERS.md`
 - Airtable starter import:

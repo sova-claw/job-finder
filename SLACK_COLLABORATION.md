@@ -18,9 +18,13 @@ The bridge owns the planner context and reuses it on every call.
 ## Where Context Lives
 
 Tracked in repo:
-- `PLANNER_CONTEXT.md`
-- `PLANNER_MEMORY.md`
+- `agents/claude/CONTEXT.md`
+- `agents/claude/MEMORY.md`
+- `agents/claude/GOALS.md`
   - updated by the bridge after planner and executor replies
+- `agents/codex/CONTEXT.md`
+- `agents/llama/CONTEXT.md`
+- `agents/llama/MEMORY.md`
 
 Local runtime state:
 - `.codex/agent_bridge_sessions.json`
@@ -59,3 +63,4 @@ Executor reply appears in-thread as `Codex executor`.
 - every planner call gets the same long-lived context
 - thread transcript adds task-local context
 - repo state adds current implementation context
+- explicit goal state keeps the thread aligned around one bounded outcome

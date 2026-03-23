@@ -1,87 +1,105 @@
 # Slack Agent Bridge
 
-This utility supports three Slack collaboration modes:
+This bridge lets Slack act as the operating surface for a small agent team.
 
-- `orchestrator`: the local bridge runs both `Claude Code` and `Codex`
-- `codex-follower`: native `Claude` speaks in Slack and the local bridge runs `Codex`
-- `local-roles`: the local bridge owns the agent roles and routes `@Claude`, `@Codex`, and optional specialist bots like `@Llama`
+Supported modes:
+- `orchestrator`
+  - one local bridge runs planner and executor together
+- `codex-follower`
+  - native Claude speaks in Slack and the bridge only runs Codex
+- `local-roles`
+  - the local bridge owns `@Claude`, `@Codex`, and optional specialists like `@Llama`
 
-For a stable planner context, use `local-roles`.
+For the most stable setup, use `local-roles` with dedicated Slack bots.
 
-## Recommended Architecture
+## Project-Owned Agent Space
 
-Slack is only the interface.
-The planner state lives in the project:
+Slack is only the UI. The agent state lives in the repo.
 
-- `PLANNER_CONTEXT.md`
-  - long-lived product and role context
-- `PLANNER_MEMORY.md`
-  - rolling operational memory
-  - auto-updated by the bridge after planner and executor replies
+### Claude planner
+- `agents/claude/CONTEXT.md`
+  - stable planner role and operating rules
+- `agents/claude/MEMORY.md`
+  - rolling planner memory, updated after planner and executor replies
+- `agents/claude/GOALS.md`
+  - current goal, success check, active thread goals, recent progress, open risks
+
+### Codex executor
+- `agents/codex/CONTEXT.md`
+  - executor role and response contract
+
+### Llama specialist
+- `agents/llama/CONTEXT.md`
+  - specialist role and compression rules
+- `agents/llama/MEMORY.md`
+  - rolling specialist memory
+
+### Shared runtime state
 - `.codex/agent_bridge_sessions.json`
   - per-thread transcript memory
 - current repo state
   - branch, status, recent commits
 
-Every planner call receives all four inputs.
+Every planner call receives all of those inputs.
 
-For the optional specialist bot, the knowledge state also lives in the project:
+## Goal-Driven Flow
 
-- `LLAMA_CONTEXT.md`
-  - stable specialist role and output rules
-- `LLAMA_MEMORY.md`
-  - rolling specialist memory
-  - updated after each specialist reply
-
-## How Memory Updates Work
-
-After a planner reply, the bridge extracts:
-- `Intent`
+Planner replies now follow this packet:
+- `Goal`
+- `Decision`
+- `Task`
+- `Success Check`
 - `Risks`
 - `Handoff`
 
-After an executor reply, the bridge extracts:
+Executor replies follow this packet:
+- `Goal`
+- `What I will do`
 - `What I changed or found`
+- `Next Check`
 - `Blockers or next steps`
 
-Those summaries are written back into `PLANNER_MEMORY.md` under:
-- `Recent Planner Notes`
-- `Recent Execution Notes`
-- `Recent Risks or Blockers`
-- `Next Suggested Tasks`
-- `Last Activity`
+This keeps the thread aligned around one explicit goal at a time.
 
-This keeps one planner brain across many Slack threads without relying on the native Claude Slack app.
+## Automatic Llama Assist
 
-## How Slack Invocation Works
+When a thread gets noisy, the planner bridge can auto-run `@Llama` first.
 
-In `local-roles` mode:
-- writing `@Claude ...` in Slack does not require the native Claude app
-- the bridge listens to normal channel message events
-- if a message contains `@Claude`, the bridge runs local `claude`
-- if a message contains `@Codex`, the bridge runs local `codex`
-- if a message contains `@Llama`, the bridge runs the configured specialist command
-- after an agent has participated in a thread, plain follow-ups in that thread continue the same role unless redirected
+That summary is kept short and focuses on:
+- current goal
+- progress
+- blockers
+- clean handoff
 
-This gives you one planner context across many tasks.
+The auto-trigger threshold is controlled with:
+- `AUTO_SPECIALIST_SUMMARY_THRESHOLD`
 
-## Dual-Bot Mode
+Set it to `0` to disable auto-summarization.
 
-If you create separate Slack bots for `Claude`, `Codex`, and optional specialists like `Llama`, run one bridge process per bot and share:
+## Bot-to-Bot Planning
+
+Dedicated role bots can now ask each other questions in-thread.
+
+Examples:
+- `@Codex` can ask `@Claude` to clarify the goal or next task
+- `@Llama` can hand a compressed summary back to `@Claude`
+- `@Claude` can hand execution to `@Codex`
+
+The bridge now accepts known bot-authored messages from the other agent bots instead of dropping them.
+
+## Dual-Bot / Multi-Bot Mode
+
+Run one bridge process per bot and share:
 - the same repo
 - the same session store
 - the same planner memory
+- the same goal board
 
 Use:
 - `BRIDGE_MODE=local-roles`
 - `BRIDGE_ROLE=planner` for the `Claude` bot
 - `BRIDGE_ROLE=executor` for the `Codex` bot
 - `BRIDGE_ROLE=specialist` for the `Llama` bot
-
-In this mode:
-- real Slack mentions trigger each bot directly
-- the planner can mention the executor with a real Slack mention
-- the executor can hand review back to the planner with a real Slack mention
 
 Example launch:
 
@@ -91,27 +109,6 @@ PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.claude
 PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.codex
 PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.llama
 ```
-
-## Night Shift Mode
-
-For an autonomous but bounded overnight run:
-
-```bash
-cd backend
-PYTHONPATH=. uv run python scripts/agent_night_shift.py --channel-id <SLACK_CHANNEL_ID>
-```
-
-The night shift runner:
-- opens one new Slack thread
-- uses the same planner context and planner memory as the bridge
-- runs `Claude planner -> Codex executor` in cycles
-- stops when it hits a real blocker or decision
-- posts a final summary into the same Slack thread
-
-Recommended role model:
-- `Nazar = CEO`
-- `Claude = Product Owner / PM / BA / Scrum Master`
-- `Codex = Tech Lead / Super Senior executor`
 
 ## Required Environment Variables
 
@@ -125,18 +122,22 @@ CODEX_TRIGGER_PHRASE=@Codex
 SPECIALIST_TRIGGER_PHRASE=@Llama
 PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
 EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}
-SPECIALIST_COMMAND=ollama-api:llama3.2:3b
+SPECIALIST_COMMAND=ollama-api:qwen3.5:9b
 SPECIALIST_OLLAMA_HOST=http://127.0.0.1:11434
+EXECUTOR_DISPLAY_NAME=Codex
+AUTO_SPECIALIST_SUMMARY_THRESHOLD=10
 ```
 
-Optional:
+Optional explicit paths:
 
 ```env
 BRIDGE_WORKDIR=/Users/sova/Desktop/Projects/job_finder
-PLANNER_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/PLANNER_CONTEXT.md
-PLANNER_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/PLANNER_MEMORY.md
-SPECIALIST_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/LLAMA_CONTEXT.md
-SPECIALIST_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/LLAMA_MEMORY.md
+PLANNER_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/agents/claude/CONTEXT.md
+PLANNER_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/agents/claude/MEMORY.md
+PLANNER_GOALS_PATH=/Users/sova/Desktop/Projects/job_finder/agents/claude/GOALS.md
+EXECUTOR_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/agents/codex/CONTEXT.md
+SPECIALIST_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/agents/llama/CONTEXT.md
+SPECIALIST_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/agents/llama/MEMORY.md
 SESSIONS_PATH=/Users/sova/Desktop/Projects/job_finder/.codex/agent_bridge_sessions.json
 PLANNER_BOT_USER_ID=
 EXECUTOR_BOT_USER_ID=
@@ -155,59 +156,24 @@ uv sync --dev
 PYTHONPATH=. uv run python scripts/slack_agent_bridge.py
 ```
 
-## Slack App Configuration
-
-Use Socket Mode.
-
-Enable bot events:
-- `app_mention`
-- `message.channels`
-- `message.groups`
-- `message.im`
-- `message.mpim`
-
-Required bot scopes:
-- `app_mentions:read`
-- `chat:write`
-- `channels:history`
-- `groups:history`
-- `im:history`
-- `mpim:history`
-
 ## Recommended Slack Pattern
 
-Start a task thread with:
+Start a thread with:
 
 ```text
-@Claude plan the next step for the careers scraper.
+@Claude set the goal and next task.
 ```
 
 Then continue with:
 
 ```text
-@Codex implement it.
+@Codex execute it.
 ```
 
-For critique, summarization, or structured extraction:
+If the thread gets messy or you want a second opinion:
 
 ```text
-@Llama summarize the thread and list the main risks.
+@Llama compress the thread and list the blind spots.
 ```
 
-The specialist bot keeps a bounded local memory:
-- `Mode` updates the current working mode
-- `Findings` are summarized into recent specialist notes and structured findings
-- `Recommended handoff` is stored as the next likely handoff target
-
-For local Ollama-backed specialists, prefer:
-- `SPECIALIST_COMMAND=ollama-api:<model>`
-
-That uses the local Ollama HTTP API and avoids CLI interactivity issues.
-
-Later in the same thread, plain follow-ups can work too:
-
-```text
-status?
-any blockers?
-refine the plan
-```
+Once a bot has joined a thread, follow-ups can stay in the same thread.

@@ -15,38 +15,49 @@ from slack_bolt.async_app import AsyncApp
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.agent_bridge.config import BridgeSettings
+from app.agent_bridge.goal_memory import GoalBoardStore
 from app.agent_bridge.planner_memory import PlannerMemoryStore
 from app.agent_bridge.session_store import SessionMessage, ThreadSessionStore
 from app.agent_bridge.specialist_memory import SpecialistMemoryStore
 
 PLANNER_INSTRUCTIONS = """You are Claude Code acting as the planner for this repository.
 
-Use the provided planner context, planner memory, repo state, and Slack thread transcript.
+Use the provided planner context, planner memory, goal board,
+repo state, and Slack thread transcript.
 You are the driver, not the narrator.
 Respond with these sections only:
-1. Decision
-2. Task
-3. Risks
-4. Handoff
+1. Goal
+2. Decision
+3. Task
+4. Success Check
+5. Risks
+6. Handoff
 Rules:
-- keep the full reply under 8 short bullets or lines
+- keep the full reply under 10 short bullets or lines
+- set or refine one concrete goal for the thread
 - give exactly one next task unless blocked
 - no long explanations, no status recap unless needed for the decision
+- success check must be observable
 - make the handoff directly runnable by Codex"""
 
 EXECUTOR_INSTRUCTIONS = """You are Codex acting as the executor for this repository.
 
-Use the provided planner handoff, planner context, planner memory,
+Use the provided planner handoff, executor context, planner context, planner memory, goal board,
 repo state, and Slack thread transcript.
 Respond with these sections only:
-1. What I will do
-2. What I changed or found
-3. Blockers or next steps
-Keep it concise and concrete."""
+1. Goal
+2. What I will do
+3. What I changed or found
+4. Next Check
+5. Blockers or next steps
+Rules:
+- keep it concise and concrete
+- stay inside the current planner goal
+- prefer one bounded move over broad rewrites"""
 
 SPECIALIST_INSTRUCTIONS = """You are Llama acting as a specialist support agent for this repository.
 
-Use the provided specialist context, specialist memory, planner context,
+Use the provided specialist context, specialist memory, planner context, goal board,
 repo state, and Slack thread transcript.
 Your role is limited to critique, summarization, and structured extraction.
 Your main job is to help Claude stay short and help Codex stay clear.
@@ -59,6 +70,12 @@ Rules:
 - keep the reply under 6 short bullets or lines
 - compress, do not expand
 - prefer blind spots, extracted facts, and cleaner handoffs over commentary"""
+
+AUTO_SPECIALIST_SUMMARY_DIRECTIVE = """Current request:
+- Mode: Summarize
+- Help Claude set the next goal and task for this thread
+- Return at most 4 short bullets
+- Focus on goal, blockers, progress, and clean handoff"""
 
 
 @dataclass(slots=True)
@@ -123,10 +140,12 @@ def build_planner_prompt(
 ) -> str:
     planner_context = read_text_file(settings.planner_context_path)
     planner_memory = read_text_file(settings.planner_memory_path)
+    goal_board = read_text_file(settings.planner_goals_path)
     return (
         f"{PLANNER_INSTRUCTIONS}\n\n"
         f"Planner context:\n{planner_context or '(missing)'}\n\n"
         f"Planner memory:\n{planner_memory or '(missing)'}\n\n"
+        f"Goal board:\n{goal_board or '(missing)'}\n\n"
         f"Repo state:\n{repo_state or '(unavailable)'}\n\n"
         f"Slack thread transcript:\n{render_transcript(messages, limit=limit)}"
     )
@@ -140,12 +159,16 @@ def build_executor_prompt(
     repo_state: str,
     limit: int,
 ) -> str:
+    executor_context = read_text_file(settings.executor_context_path)
     planner_context = read_text_file(settings.planner_context_path)
     planner_memory = read_text_file(settings.planner_memory_path)
+    goal_board = read_text_file(settings.planner_goals_path)
     return (
         f"{EXECUTOR_INSTRUCTIONS}\n\n"
+        f"Executor context:\n{executor_context or '(missing)'}\n\n"
         f"Planner context:\n{planner_context or '(missing)'}\n\n"
         f"Planner memory:\n{planner_memory or '(missing)'}\n\n"
+        f"Goal board:\n{goal_board or '(missing)'}\n\n"
         f"Repo state:\n{repo_state or '(unavailable)'}\n\n"
         f"Slack thread transcript:\n{render_transcript(messages, limit=limit)}\n\n"
         f"Planner handoff:\n{planner_output}"
@@ -158,15 +181,20 @@ def build_specialist_prompt(
     settings: BridgeSettings,
     repo_state: str,
     limit: int,
+    directive: str | None = None,
 ) -> str:
     planner_context = read_text_file(settings.planner_context_path)
+    goal_board = read_text_file(settings.planner_goals_path)
     specialist_context = read_text_file(settings.specialist_context_path)
     specialist_memory = read_text_file(settings.specialist_memory_path)
+    request_block = f"{directive.strip()}\n\n" if directive and directive.strip() else ""
     return (
         f"{SPECIALIST_INSTRUCTIONS}\n\n"
+        f"{request_block}"
         f"Specialist context:\n{specialist_context or '(missing)'}\n\n"
         f"Specialist memory:\n{specialist_memory or '(missing)'}\n\n"
         f"Planner context:\n{planner_context or '(missing)'}\n\n"
+        f"Goal board:\n{goal_board or '(missing)'}\n\n"
         f"Repo state:\n{repo_state or '(unavailable)'}\n\n"
         f"Slack thread transcript:\n{render_transcript(messages, limit=limit)}"
     )
@@ -355,6 +383,50 @@ def thread_has_role(messages: list[SessionMessage], role: str) -> bool:
     return any(message.role == role for message in messages)
 
 
+def should_auto_summarize_for_planner(
+    messages: list[SessionMessage],
+    *,
+    threshold: int,
+) -> bool:
+    if threshold <= 0 or len(messages) < threshold:
+        return False
+    recent_roles = [message.role for message in messages[-3:]]
+    return "specialist" not in recent_roles
+
+
+def event_author_identity(
+    event: dict,
+    settings: BridgeSettings,
+    *,
+    self_bot_user_id: str,
+) -> tuple[str, str]:
+    user_id = str(event.get("user") or "")
+    username = str(
+        event.get("username")
+        or (event.get("bot_profile") or {}).get("name")
+        or ""
+    ).strip()
+    username_lower = username.lower()
+
+    if user_id and user_id == self_bot_user_id:
+        return "self", "Self bot"
+    if user_id and user_id == settings.planner_bot_user_id:
+        return "planner", "Claude planner"
+    if user_id and user_id == settings.executor_bot_user_id:
+        return "executor", "Codex executor"
+    if user_id and user_id == settings.specialist_bot_user_id:
+        return "specialist", f"{settings.specialist_display_name} specialist"
+    if username_lower == settings.planner_display_name.strip().lower():
+        return "planner", "Claude planner"
+    if username_lower == settings.executor_display_name.strip().lower():
+        return "executor", "Codex executor"
+    if username_lower == settings.specialist_display_name.strip().lower():
+        return "specialist", f"{settings.specialist_display_name} specialist"
+    if event.get("bot_id"):
+        return "bot", username or "Slack bot"
+    return "user", "Human"
+
+
 def normalize_event_payload(event: dict) -> dict | None:
     subtype = event.get("subtype")
     if subtype in {"message_changed", "message_replied"}:
@@ -474,12 +546,26 @@ class SlackAgentBridge:
         self.settings = settings
         self.sessions = ThreadSessionStore(settings.sessions_path)
         self.planner_memory = PlannerMemoryStore(settings.planner_memory_path)
+        self.goal_board = GoalBoardStore(settings.planner_goals_path)
         self.specialist_memory = SpecialistMemoryStore(settings.specialist_memory_path)
         self.workdir = Path(settings.bridge_workdir)
         self.app = AsyncApp(token=settings.slack_bot_token)
         self.bot_user_id = ""
         self._recent_events: dict[str, float] = {}
         self._register_handlers()
+
+    def _is_current_bot_role_event(self, event: dict, author_role: str) -> bool:
+        if not event.get("bot_id"):
+            return False
+        if self.settings.bridge_role == "planner":
+            return author_role == "planner"
+        if self.settings.bridge_role == "executor":
+            return author_role == "executor"
+        if self.settings.bridge_role == "specialist":
+            return author_role == "specialist"
+        if self.settings.bridge_role == "both":
+            return author_role in {"planner", "executor", "specialist"}
+        return False
 
     def _register_handlers(self) -> None:
         @self.app.event("app_mention")
@@ -568,9 +654,6 @@ class SlackAgentBridge:
         client: AsyncWebClient,
         logger,
     ) -> None:
-        if event.get("bot_id") or event.get("subtype"):
-            return
-
         channel = event.get("channel")
         thread_ts = event.get("thread_ts") or event.get("ts")
         if not channel or not thread_ts:
@@ -581,11 +664,19 @@ class SlackAgentBridge:
         if not text:
             return
 
+        author_role, author_name = event_author_identity(
+            event,
+            self.settings,
+            self_bot_user_id=self.bot_user_id,
+        )
+        if author_role == "self" or self._is_current_bot_role_event(event, author_role):
+            return
+
         thread_key = build_thread_key(channel, thread_ts)
         self.sessions.upsert(
             thread_key,
-            role="user",
-            author="Human",
+            role="user" if author_role == "bot" else author_role,
+            author=author_name,
             content=text,
             message_ts=str(event.get("ts", "")),
         )
@@ -656,9 +747,6 @@ class SlackAgentBridge:
         client: AsyncWebClient,
         logger,
     ) -> None:
-        if event.get("bot_id") or event.get("subtype"):
-            return
-
         channel = event.get("channel")
         thread_ts = event.get("thread_ts") or event.get("ts")
         if not channel or not thread_ts:
@@ -669,11 +757,19 @@ class SlackAgentBridge:
         if not text:
             return
 
+        author_role, author_name = event_author_identity(
+            event,
+            self.settings,
+            self_bot_user_id=self.bot_user_id,
+        )
+        if author_role == "self" or self._is_current_bot_role_event(event, author_role):
+            return
+
         thread_key = build_thread_key(channel, thread_ts)
         self.sessions.upsert(
             thread_key,
-            role="user",
-            author="Human",
+            role="user" if author_role == "bot" else author_role,
+            author=author_name,
             content=text,
             message_ts=str(event.get("ts", "")),
         )
@@ -787,7 +883,7 @@ class SlackAgentBridge:
             raw_text=raw_text,
             cleaned_text=text,
             settings=self.settings,
-            codex_user_id=self.codex_user_id,
+            codex_user_id=self.settings.executor_bot_user_id or self.bot_user_id,
             history=history,
         ):
             return
@@ -817,10 +913,23 @@ class SlackAgentBridge:
         thread_key: str,
     ) -> None:
         repo_state = await collect_repo_state(self.workdir)
+        history = self.sessions.get(thread_key)
+        if should_auto_summarize_for_planner(
+            history,
+            threshold=self.settings.auto_specialist_summary_threshold,
+        ):
+            await self._run_specialist_and_post(
+                client=client,
+                channel=channel,
+                thread_ts=thread_ts,
+                thread_key=thread_key,
+                directive=AUTO_SPECIALIST_SUMMARY_DIRECTIVE,
+            )
+            history = self.sessions.get(thread_key)
         planner_reply = await run_agent_command(
             self.settings.planner_command,
             build_planner_prompt(
-                self.sessions.get(thread_key),
+                history,
                 settings=self.settings,
                 repo_state=repo_state,
                 limit=self.settings.max_history_messages,
@@ -835,6 +944,7 @@ class SlackAgentBridge:
             content=planner_reply,
         )
         self.planner_memory.record_planner_reply(thread_key, planner_reply)
+        self.goal_board.record_planner_reply(thread_key, planner_reply)
         await post_long_message(
             client,
             channel=channel,
@@ -866,6 +976,7 @@ class SlackAgentBridge:
         )
         executor_reply = inject_known_mentions(executor_reply, self.settings)
         self.planner_memory.record_executor_reply(thread_key, executor_reply)
+        self.goal_board.record_executor_reply(thread_key, executor_reply)
         if self.settings.bridge_mode in {"codex-follower", "local-roles"}:
             executor_reply = f"{executor_reply}\n\n{planner_review_suffix(self.settings)}"
         self.sessions.append(
@@ -889,6 +1000,7 @@ class SlackAgentBridge:
         channel: str,
         thread_ts: str,
         thread_key: str,
+        directive: str | None = None,
     ) -> None:
         repo_state = await collect_repo_state(self.workdir)
         specialist_prompt = build_specialist_prompt(
@@ -896,6 +1008,7 @@ class SlackAgentBridge:
             settings=self.settings,
             repo_state=repo_state,
             limit=self.settings.max_history_messages,
+            directive=directive,
         )
         specialist_reply = await run_specialist_command(
             self.settings.specialist_command,

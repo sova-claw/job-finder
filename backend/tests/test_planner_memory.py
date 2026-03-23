@@ -11,6 +11,8 @@ def test_planner_memory_store_bootstraps_expected_sections(tmp_path: Path) -> No
     content = memory_path.read_text(encoding="utf-8")
 
     assert "# Planner Memory" in content
+    assert "## Current Goal" in content
+    assert "## Current Success Check" in content
     assert "## Recent Planner Notes" in content
     assert "## Recent Execution Notes" in content
     assert "## Last Activity" in content
@@ -22,11 +24,17 @@ def test_planner_memory_store_records_planner_and_executor_updates(tmp_path: Pat
 
     store.record_planner_reply(
         "C1:100.0",
-        """Intent
+        """Goal
 Ship the careers scraper for the first ATS targets.
 
-Plan
+Decision
+Keep the first iteration ATS-first.
+
+Task
 - Parse Greenhouse boards first.
+
+Success Check
+- JFrog and monday roles land in CIS.
 
 Risks
 - Some companies use custom HTML pages.
@@ -37,11 +45,17 @@ Handoff
     )
     store.record_executor_reply(
         "C1:100.0",
-        """What I will do
+        """Goal
+Ship the careers scraper for the first ATS targets.
+
+What I will do
 - Implement the Greenhouse parser.
 
 What I changed or found
 - Added company board discovery and normalized job extraction.
+
+Next Check
+- Validate two target companies end-to-end.
 
 Blockers or next steps
 - Need one more selector for monday custom cards.
@@ -50,7 +64,9 @@ Blockers or next steps
 
     content = memory_path.read_text(encoding="utf-8")
 
-    assert "- C1:100.0: Ship the careers scraper for the first ATS targets." in content
+    assert "## Current Goal\n- Ship the careers scraper for the first ATS targets." in content
+    assert "## Current Success Check\n- JFrog and monday roles land in CIS." in content
+    assert "- C1:100.0: Keep the first iteration ATS-first." in content
     assert "- C1:100.0: Added company board discovery and normalized job extraction." in content
     assert "- C1:100.0: Some companies use custom HTML pages." in content
     assert "- C1:100.0: Start with JFrog and monday.com." in content
@@ -73,10 +89,10 @@ def test_planner_memory_store_deduplicates_repeated_items(tmp_path: Path) -> Non
     memory_path = tmp_path / "PLANNER_MEMORY.md"
     store = PlannerMemoryStore(str(memory_path))
 
-    planner_reply = """Intent
+    planner_reply = """Goal
 Keep Slack as UI only.
 
-Plan
+Decision
 - Reuse local planner context.
 
 Risks

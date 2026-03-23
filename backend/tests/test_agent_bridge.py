@@ -7,11 +7,13 @@ from app.agent_bridge.service import (
     build_specialist_prompt,
     build_thread_key,
     contains_trigger_phrase,
+    event_author_identity,
     event_dedup_key,
     extract_ollama_model,
     inject_known_mentions,
     normalize_event_payload,
     planner_review_suffix,
+    should_auto_summarize_for_planner,
     should_trigger_executor,
     should_trigger_planner,
     should_trigger_specialist,
@@ -69,16 +71,22 @@ def test_thread_session_store_upsert_updates_existing_message(tmp_path: Path) ->
 def test_prompt_builders_include_context(tmp_path: Path) -> None:
     context = tmp_path / "PLANNER_CONTEXT.md"
     memory = tmp_path / "PLANNER_MEMORY.md"
+    goals = tmp_path / "GOALS.md"
+    executor_context = tmp_path / "CODEX_CONTEXT.md"
     specialist_context = tmp_path / "LLAMA_CONTEXT.md"
     specialist_memory = tmp_path / "LLAMA_MEMORY.md"
     context.write_text("stable context")
     memory.write_text("rolling memory")
+    goals.write_text("goal board")
+    executor_context.write_text("executor context")
     specialist_context.write_text("specialist context")
     specialist_memory.write_text("specialist memory")
     settings = BridgeSettings(
         _env_file=None,
         planner_context_path=str(context),
         planner_memory_path=str(memory),
+        planner_goals_path=str(goals),
+        executor_context_path=str(executor_context),
         specialist_context_path=str(specialist_context),
         specialist_memory_path=str(specialist_memory),
     )
@@ -110,7 +118,9 @@ def test_prompt_builders_include_context(tmp_path: Path) -> None:
 
     assert "stable context" in planner_prompt
     assert "rolling memory" in planner_prompt
+    assert "goal board" in planner_prompt
     assert "branch main" in executor_prompt
+    assert "executor context" in executor_prompt
     assert "Planner handoff" in executor_prompt
     assert "Slack thread transcript" in specialist_prompt
     assert "specialist context" in specialist_prompt
@@ -305,3 +315,52 @@ def test_event_dedup_key_changes_when_text_changes() -> None:
     two = event_dedup_key({"channel": "C1", "ts": "1.0", "user": "U1", "text": "hello"})
 
     assert one != two
+
+
+def test_should_auto_summarize_for_planner_requires_noisy_thread() -> None:
+    history = [
+        SessionMessage(
+            created_at="2026-03-22T18:01:00+00:00",
+            author="Human",
+            role="user",
+            content=f"message {index}",
+        )
+        for index in range(10)
+    ]
+
+    assert should_auto_summarize_for_planner(history, threshold=10) is True
+
+    history.append(
+        SessionMessage(
+            created_at="2026-03-22T18:02:00+00:00",
+            author="Llama specialist",
+            role="specialist",
+            content="Mode\nSummarize",
+        )
+    )
+    assert should_auto_summarize_for_planner(history, threshold=10) is False
+
+
+def test_event_author_identity_maps_known_bot_users() -> None:
+    settings = BridgeSettings(
+        _env_file=None,
+        planner_bot_user_id="UCLAUDE",
+        executor_bot_user_id="UCODEX",
+        specialist_bot_user_id="ULLAMA",
+    )
+
+    assert event_author_identity(
+        {"user": "UCLAUDE"},
+        settings,
+        self_bot_user_id="USELF",
+    ) == ("planner", "Claude planner")
+    assert event_author_identity(
+        {"user": "UCODEX"},
+        settings,
+        self_bot_user_id="USELF",
+    ) == ("executor", "Codex executor")
+    assert event_author_identity(
+        {"user": "ULLAMA"},
+        settings,
+        self_bot_user_id="USELF",
+    ) == ("specialist", "Llama specialist")
