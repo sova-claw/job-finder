@@ -144,7 +144,8 @@ CODEX_TRIGGER_PHRASE=@Codex
 SPECIALIST_TRIGGER_PHRASE=@Llama
 PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
 EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}
-SPECIALIST_COMMAND=ollama run llama3.2:3b
+SPECIALIST_COMMAND=ollama-api:llama3.2:3b
+SPECIALIST_OLLAMA_HOST=http://127.0.0.1:11434
 ```
 
 ## Airtable Setup

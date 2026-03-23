@@ -8,6 +8,7 @@ from app.agent_bridge.service import (
     build_thread_key,
     contains_trigger_phrase,
     event_dedup_key,
+    extract_ollama_model,
     inject_known_mentions,
     normalize_event_payload,
     planner_review_suffix,
@@ -160,6 +161,12 @@ def test_inject_known_mentions_rewrites_trigger_phrases() -> None:
 def test_contains_trigger_phrase_normalizes_case() -> None:
     assert contains_trigger_phrase("please ask @claude next", "@Claude") is True
     assert contains_trigger_phrase("hello there", "@Claude") is False
+
+
+def test_extract_ollama_model_supports_api_and_cli_styles() -> None:
+    assert extract_ollama_model("ollama-api:qwen3.5:9b") == "qwen3.5:9b"
+    assert extract_ollama_model("ollama run qwen3.5:9b --hidethinking") == "qwen3.5:9b"
+    assert extract_ollama_model("codex exec --dangerously-bypass-approvals-and-sandbox") is None
 
 
 def test_codex_target_detection_supports_mentions_and_plain_text() -> None:

@@ -16,6 +16,7 @@ class BridgeSettings(BaseSettings):
         "codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}"
     )
     specialist_command: str = "ollama run llama3.2:3b"
+    specialist_ollama_host: str = "http://127.0.0.1:11434"
     bridge_workdir: str = str(Path(__file__).resolve().parents[3])
     sessions_path: str = str(
         Path(__file__).resolve().parents[3] / ".codex" / "agent_bridge_sessions.json"

@@ -125,7 +125,8 @@ CODEX_TRIGGER_PHRASE=@Codex
 SPECIALIST_TRIGGER_PHRASE=@Llama
 PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
 EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}
-SPECIALIST_COMMAND=ollama run llama3.2:3b
+SPECIALIST_COMMAND=ollama-api:llama3.2:3b
+SPECIALIST_OLLAMA_HOST=http://127.0.0.1:11434
 ```
 
 Optional:
@@ -197,6 +198,11 @@ The specialist bot keeps a bounded local memory:
 - `Mode` updates the current working mode
 - `Findings` are summarized into recent specialist notes and structured findings
 - `Recommended handoff` is stored as the next likely handoff target
+
+For local Ollama-backed specialists, prefer:
+- `SPECIALIST_COMMAND=ollama-api:<model>`
+
+That uses the local Ollama HTTP API and avoids CLI interactivity issues.
 
 Later in the same thread, plain follow-ups can work too:
 

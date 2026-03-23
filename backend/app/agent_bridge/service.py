@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import shlex
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
 from slack_bolt.adapter.socket_mode.aiohttp import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
 from slack_sdk.web.async_client import AsyncWebClient
@@ -196,6 +198,45 @@ async def run_agent_command(
 
     final_text = output_text or stdout.decode("utf-8", errors="ignore").strip()
     return final_text or "(no output)"
+
+
+def extract_ollama_model(command_template: str) -> str | None:
+    template = command_template.strip()
+    if template.startswith("ollama-api:"):
+        model = template.split(":", 1)[1].strip()
+        return model or None
+
+    parts = shlex.split(template)
+    if len(parts) >= 3 and parts[0] == "ollama" and parts[1] == "run":
+        return parts[2]
+    return None
+
+
+async def run_specialist_command(
+    command_template: str,
+    prompt: str,
+    *,
+    cwd: Path,
+    ollama_host: str,
+) -> str:
+    model = extract_ollama_model(command_template)
+    if not model:
+        return await run_agent_command(command_template, prompt, cwd=cwd)
+
+    base_url = os.environ.get("OLLAMA_HOST", ollama_host).rstrip("/")
+    async with httpx.AsyncClient(timeout=120) as client:
+        response = await client.post(
+            f"{base_url}/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+    content = str(payload.get("response", "")).strip()
+    return content or "(no output)"
 
 
 async def post_long_message(
@@ -841,15 +882,17 @@ class SlackAgentBridge:
         thread_key: str,
     ) -> None:
         repo_state = await collect_repo_state(self.workdir)
-        specialist_reply = await run_agent_command(
+        specialist_prompt = build_specialist_prompt(
+            self.sessions.get(thread_key),
+            settings=self.settings,
+            repo_state=repo_state,
+            limit=self.settings.max_history_messages,
+        )
+        specialist_reply = await run_specialist_command(
             self.settings.specialist_command,
-            build_specialist_prompt(
-                self.sessions.get(thread_key),
-                settings=self.settings,
-                repo_state=repo_state,
-                limit=self.settings.max_history_messages,
-            ),
+            specialist_prompt,
             cwd=self.workdir,
+            ollama_host=self.settings.specialist_ollama_host,
         )
         specialist_reply = inject_known_mentions(specialist_reply, self.settings)
         self.specialist_memory.record_specialist_reply(thread_key, specialist_reply)
