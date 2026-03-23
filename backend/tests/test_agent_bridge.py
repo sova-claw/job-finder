@@ -4,6 +4,7 @@ from app.agent_bridge.config import BridgeSettings
 from app.agent_bridge.service import (
     build_executor_prompt,
     build_planner_prompt,
+    build_specialist_prompt,
     build_thread_key,
     contains_trigger_phrase,
     event_dedup_key,
@@ -12,8 +13,10 @@ from app.agent_bridge.service import (
     planner_review_suffix,
     should_trigger_executor,
     should_trigger_planner,
+    should_trigger_specialist,
     targets_codex,
     targets_planner,
+    targets_specialist,
 )
 from app.agent_bridge.session_store import SessionMessage, ThreadSessionStore
 
@@ -91,11 +94,18 @@ def test_prompt_builders_include_context(tmp_path: Path) -> None:
         repo_state="branch main",
         limit=8,
     )
+    specialist_prompt = build_specialist_prompt(
+        messages,
+        settings=settings,
+        repo_state="branch main",
+        limit=8,
+    )
 
     assert "stable context" in planner_prompt
     assert "rolling memory" in planner_prompt
     assert "branch main" in executor_prompt
     assert "Planner handoff" in executor_prompt
+    assert "Slack thread transcript" in specialist_prompt
 
 
 def test_planner_review_suffix_in_local_roles_uses_trigger_phrase() -> None:
@@ -123,14 +133,20 @@ def test_inject_known_mentions_rewrites_trigger_phrases() -> None:
         _env_file=None,
         planner_bot_user_id="UCLAUDE",
         executor_bot_user_id="UCODEX",
+        specialist_bot_user_id="ULLAMA",
         planner_trigger_phrase="@Claude",
         codex_trigger_phrase="@Codex",
+        specialist_trigger_phrase="@Llama",
     )
 
-    rewritten = inject_known_mentions("@Codex ship it, then ask @Claude for review.", settings)
+    rewritten = inject_known_mentions(
+        "@Codex ship it, ask @Claude for review, then ask @Llama for critique.",
+        settings,
+    )
 
     assert "<@UCODEX>" in rewritten
     assert "<@UCLAUDE>" in rewritten
+    assert "<@ULLAMA>" in rewritten
 
 
 def test_contains_trigger_phrase_normalizes_case() -> None:
@@ -151,6 +167,13 @@ def test_planner_target_detection_supports_trigger_phrase() -> None:
 
     assert targets_planner("@Claude review this", "@Claude review this", settings) is True
     assert targets_planner("review this", "review this", settings) is False
+
+
+def test_specialist_target_detection_supports_trigger_phrase() -> None:
+    settings = BridgeSettings(_env_file=None, specialist_trigger_phrase="@Llama")
+
+    assert targets_specialist("@Llama summarize this", "@Llama summarize this", settings) is True
+    assert targets_specialist("summarize this", "summarize this", settings) is False
 
 
 def test_should_trigger_executor_for_codex_and_thread_follow_up() -> None:
@@ -205,6 +228,37 @@ def test_should_trigger_planner_for_phrase_and_thread_follow_up() -> None:
         raw_text="one more variant",
         cleaned_text="one more variant",
         settings=settings,
+        planner_user_id="",
+        codex_user_id="",
+        history=history,
+    ) is True
+
+
+def test_should_trigger_specialist_for_phrase_and_thread_follow_up() -> None:
+    settings = BridgeSettings(_env_file=None, specialist_trigger_phrase="@Llama")
+    history = [
+        SessionMessage(
+            created_at="2026-03-22T18:01:00+00:00",
+            author="Llama specialist",
+            role="specialist",
+            content="Mode\nSummarize",
+        )
+    ]
+
+    assert should_trigger_specialist(
+        raw_text="@Llama summarize this",
+        cleaned_text="@Llama summarize this",
+        settings=settings,
+        specialist_user_id="",
+        planner_user_id="",
+        codex_user_id="",
+        history=history,
+    ) is True
+    assert should_trigger_specialist(
+        raw_text="tighten the summary",
+        cleaned_text="tighten the summary",
+        settings=settings,
+        specialist_user_id="",
         planner_user_id="",
         codex_user_id="",
         history=history,

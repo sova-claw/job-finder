@@ -97,6 +97,7 @@ curl -X POST http://localhost:8000/api/alerts/slack/send
 Optional separate utility:
 - `Claude Code` acts as planner
 - `Codex` acts as executor
+- `Llama` can act as an optional specialist for summarization, critique, and extraction
 - Slack thread is the shared coordination surface
 - supports `orchestrator`, `codex-follower`, and `local-roles` modes
 
@@ -121,6 +122,7 @@ Dual-bot runner:
 cd backend
 PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.claude
 PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.codex
+PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.llama
 ```
 
 Night shift runner:
@@ -138,8 +140,10 @@ SLACK_APP_TOKEN=xapp-...
 BRIDGE_MODE=local-roles
 PLANNER_TRIGGER_PHRASE=@Claude
 CODEX_TRIGGER_PHRASE=@Codex
+SPECIALIST_TRIGGER_PHRASE=@Llama
 PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
 EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}
+SPECIALIST_COMMAND=ollama run llama3.2:3b
 ```
 
 ## Airtable Setup

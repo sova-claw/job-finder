@@ -36,6 +36,17 @@ Respond with these sections only:
 3. Blockers or next steps
 Keep it concise and concrete."""
 
+SPECIALIST_INSTRUCTIONS = """You are Llama acting as a specialist support agent for this repository.
+
+Use the provided planner context, planner memory, repo state, and Slack thread transcript.
+Your role is limited to critique, summarization, and structured extraction.
+Do not plan the project or make code changes.
+Respond with these sections only:
+1. Mode
+2. Findings
+3. Recommended handoff
+Keep it concise, useful, and grounded in the thread context."""
+
 
 @dataclass(slots=True)
 class AgentResult:
@@ -128,6 +139,24 @@ def build_executor_prompt(
     )
 
 
+def build_specialist_prompt(
+    messages: list[SessionMessage],
+    *,
+    settings: BridgeSettings,
+    repo_state: str,
+    limit: int,
+) -> str:
+    planner_context = read_text_file(settings.planner_context_path)
+    planner_memory = read_text_file(settings.planner_memory_path)
+    return (
+        f"{SPECIALIST_INSTRUCTIONS}\n\n"
+        f"Planner context:\n{planner_context or '(missing)'}\n\n"
+        f"Planner memory:\n{planner_memory or '(missing)'}\n\n"
+        f"Repo state:\n{repo_state or '(unavailable)'}\n\n"
+        f"Slack thread transcript:\n{render_transcript(messages, limit=limit)}"
+    )
+
+
 async def run_agent_command(
     command_template: str,
     prompt: str,
@@ -200,6 +229,11 @@ def inject_known_mentions(text: str, settings: BridgeSettings) -> str:
             settings.codex_trigger_phrase,
             f"<@{settings.executor_bot_user_id}>",
         )
+    if settings.specialist_bot_user_id:
+        updated = updated.replace(
+            settings.specialist_trigger_phrase,
+            f"<@{settings.specialist_bot_user_id}>",
+        )
     return updated
 
 
@@ -239,6 +273,26 @@ def targets_planner(
         [
             mentions_user(raw_text, user_id),
             contains_trigger_phrase(cleaned_text, settings.planner_trigger_phrase),
+        ]
+    )
+
+
+def targets_specialist(
+    raw_text: str,
+    cleaned_text: str,
+    settings: BridgeSettings,
+    *,
+    specialist_user_id: str | None = None,
+) -> bool:
+    user_id = (
+        specialist_user_id
+        if specialist_user_id is not None
+        else settings.specialist_bot_user_id
+    )
+    return any(
+        [
+            mentions_user(raw_text, user_id),
+            contains_trigger_phrase(cleaned_text, settings.specialist_trigger_phrase),
         ]
     )
 
@@ -317,6 +371,40 @@ def should_trigger_planner(
         return True
 
     if thread_has_role(history, "planner") and not targets_codex(
+        raw_text,
+        cleaned_text,
+        settings,
+        codex_user_id=codex_user_id,
+    ):
+        return True
+
+    return False
+
+
+def should_trigger_specialist(
+    *,
+    raw_text: str,
+    cleaned_text: str,
+    settings: BridgeSettings,
+    specialist_user_id: str | None = None,
+    planner_user_id: str | None = None,
+    codex_user_id: str = "",
+    history: list[SessionMessage],
+) -> bool:
+    if targets_specialist(
+        raw_text,
+        cleaned_text,
+        settings,
+        specialist_user_id=specialist_user_id,
+    ):
+        return True
+
+    if thread_has_role(history, "specialist") and not targets_planner(
+        raw_text,
+        cleaned_text,
+        settings,
+        planner_user_id=planner_user_id,
+    ) and not targets_codex(
         raw_text,
         cleaned_text,
         settings,
@@ -449,6 +537,23 @@ class SlackAgentBridge:
         history = self.sessions.get(thread_key)
 
         try:
+            if should_trigger_specialist(
+                raw_text=raw_text,
+                cleaned_text=text,
+                settings=self.settings,
+                specialist_user_id=self.settings.specialist_bot_user_id,
+                planner_user_id=self.settings.planner_bot_user_id,
+                codex_user_id=self.settings.executor_bot_user_id,
+                history=history,
+            ):
+                await self._run_specialist_and_post(
+                    client=client,
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    thread_key=thread_key,
+                )
+                return
+
             if should_trigger_planner(
                 raw_text=raw_text,
                 cleaned_text=text,
@@ -531,6 +636,25 @@ class SlackAgentBridge:
                 ):
                     return
                 await self._run_planner_and_post(
+                    client=client,
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    thread_key=thread_key,
+                )
+                return
+
+            if self.settings.bridge_role == "specialist":
+                if not should_trigger_specialist(
+                    raw_text=raw_text,
+                    cleaned_text=text,
+                    settings=self.settings,
+                    specialist_user_id=self.bot_user_id,
+                    planner_user_id=self.settings.planner_bot_user_id,
+                    codex_user_id=self.settings.executor_bot_user_id,
+                    history=history,
+                ):
+                    return
+                await self._run_specialist_and_post(
                     client=client,
                     channel=channel,
                     thread_ts=thread_ts,
@@ -701,6 +825,40 @@ class SlackAgentBridge:
             thread_ts=thread_ts,
             header="Codex executor",
             content=executor_reply,
+        )
+
+    async def _run_specialist_and_post(
+        self,
+        *,
+        client: AsyncWebClient,
+        channel: str,
+        thread_ts: str,
+        thread_key: str,
+    ) -> None:
+        repo_state = await collect_repo_state(self.workdir)
+        specialist_reply = await run_agent_command(
+            self.settings.specialist_command,
+            build_specialist_prompt(
+                self.sessions.get(thread_key),
+                settings=self.settings,
+                repo_state=repo_state,
+                limit=self.settings.max_history_messages,
+            ),
+            cwd=self.workdir,
+        )
+        specialist_reply = inject_known_mentions(specialist_reply, self.settings)
+        self.sessions.append(
+            thread_key,
+            role="specialist",
+            author=f"{self.settings.specialist_display_name} specialist",
+            content=specialist_reply,
+        )
+        await post_long_message(
+            client,
+            channel=channel,
+            thread_ts=thread_ts,
+            header=f"{self.settings.specialist_display_name} specialist",
+            content=specialist_reply,
         )
 
     def _last_role_content(self, thread_key: str, role: str) -> str:

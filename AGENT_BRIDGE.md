@@ -4,7 +4,7 @@ This utility supports three Slack collaboration modes:
 
 - `orchestrator`: the local bridge runs both `Claude Code` and `Codex`
 - `codex-follower`: native `Claude` speaks in Slack and the local bridge runs `Codex`
-- `local-roles`: the local bridge owns both roles and routes `@Claude` and `@Codex`
+- `local-roles`: the local bridge owns the agent roles and routes `@Claude`, `@Codex`, and optional specialist bots like `@Llama`
 
 For a stable planner context, use `local-roles`.
 
@@ -52,13 +52,14 @@ In `local-roles` mode:
 - the bridge listens to normal channel message events
 - if a message contains `@Claude`, the bridge runs local `claude`
 - if a message contains `@Codex`, the bridge runs local `codex`
-- after either agent has participated in a thread, plain follow-ups in that thread continue the same role unless redirected
+- if a message contains `@Llama`, the bridge runs the configured specialist command
+- after an agent has participated in a thread, plain follow-ups in that thread continue the same role unless redirected
 
 This gives you one planner context across many tasks.
 
 ## Dual-Bot Mode
 
-If you create separate Slack bots for `Claude` and `Codex`, run two bridge processes that share:
+If you create separate Slack bots for `Claude`, `Codex`, and optional specialists like `Llama`, run one bridge process per bot and share:
 - the same repo
 - the same session store
 - the same planner memory
@@ -67,6 +68,7 @@ Use:
 - `BRIDGE_MODE=local-roles`
 - `BRIDGE_ROLE=planner` for the `Claude` bot
 - `BRIDGE_ROLE=executor` for the `Codex` bot
+- `BRIDGE_ROLE=specialist` for the `Llama` bot
 
 In this mode:
 - real Slack mentions trigger each bot directly
@@ -79,6 +81,7 @@ Example launch:
 cd backend
 PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.claude
 PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.codex
+PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.llama
 ```
 
 ## Night Shift Mode
@@ -111,8 +114,10 @@ BRIDGE_MODE=local-roles
 BRIDGE_ROLE=both
 PLANNER_TRIGGER_PHRASE=@Claude
 CODEX_TRIGGER_PHRASE=@Codex
+SPECIALIST_TRIGGER_PHRASE=@Llama
 PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
 EXECUTOR_COMMAND=codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}
+SPECIALIST_COMMAND=ollama run llama3.2:3b
 ```
 
 Optional:
@@ -124,6 +129,7 @@ PLANNER_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/PLANNER_MEMORY.md
 SESSIONS_PATH=/Users/sova/Desktop/Projects/job_finder/.codex/agent_bridge_sessions.json
 PLANNER_BOT_USER_ID=
 EXECUTOR_BOT_USER_ID=
+SPECIALIST_BOT_USER_ID=
 DEFAULT_AGENT_CHANNEL_ID=
 OVERNIGHT_MAX_CYCLES=3
 OVERNIGHT_GOAL=Work the highest-priority unblocked task in the repo, keep tasks bounded, post progress in Slack, and stop when a real blocker or decision is needed.
@@ -169,6 +175,12 @@ Then continue with:
 
 ```text
 @Codex implement it.
+```
+
+For critique, summarization, or structured extraction:
+
+```text
+@Llama summarize the thread and list the main risks.
 ```
 
 Later in the same thread, plain follow-ups can work too:
