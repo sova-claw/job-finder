@@ -946,8 +946,6 @@ class SlackAgentBridge:
 
         try:
             if self.settings.bridge_role == "planner":
-                if author_role in {"executor", "specialist"}:
-                    return
                 if not should_trigger_planner(
                     raw_text=raw_text,
                     cleaned_text=text,

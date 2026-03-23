@@ -579,6 +579,41 @@ async def test_run_executor_and_post_skips_planner_handoff_when_not_continuing(
 
 
 @pytest.mark.asyncio
+async def test_planner_dedicated_role_accepts_executor_handoff(
+    monkeypatch, tmp_path: Path
+) -> None:
+    settings = BridgeSettings(
+        _env_file=None,
+        bridge_mode="local-roles",
+        bridge_role="planner",
+        slack_bot_token="xoxb-planner",
+        planner_bot_user_id="UCLAUDE",
+        executor_bot_user_id="UCODEX",
+        sessions_path=str(tmp_path / "sessions.json"),
+        planner_memory_path=str(tmp_path / "PLANNER_MEMORY.md"),
+    )
+    bridge = SlackAgentBridge(settings)
+    bridge.bot_user_id = "UCLAUDE"
+    run_planner = AsyncMock()
+    monkeypatch.setattr(bridge, "_run_planner_and_post", run_planner)
+
+    await bridge._handle_dedicated_role_event(
+        {
+            "type": "message",
+            "channel": "C123",
+            "ts": "171.222",
+            "thread_ts": "171.222",
+            "text": "<@UCLAUDE> review the next iteration",
+            "user": "UCODEX",
+        },
+        client=object(),
+        logger=AsyncMock(),
+    )
+
+    run_planner.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_run_planner_via_peer_token_requires_token(tmp_path: Path) -> None:
     settings = BridgeSettings(
         _env_file=None,
