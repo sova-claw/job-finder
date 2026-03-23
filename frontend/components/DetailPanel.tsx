@@ -4,6 +4,8 @@ import { useDeferredValue } from "react";
 import { ExternalLink } from "lucide-react";
 
 import { CoverLetterTab } from "@/components/CoverLetterTab";
+import { JobChatTab } from "@/components/JobChatTab";
+import { JobResearchTab } from "@/components/JobResearchTab";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -137,6 +139,18 @@ function InspectorBody({ job, onClear }: { job: JobDetail; onClear: () => void }
             >
               Cover letter
             </TabsTrigger>
+            <TabsTrigger
+              value="research"
+              className="rounded-full px-3 text-xs uppercase tracking-[0.16em] data-[state=active]:bg-[var(--accent)] data-[state=active]:text-white"
+            >
+              Research
+            </TabsTrigger>
+            <TabsTrigger
+              value="chat"
+              className="rounded-full px-3 text-xs uppercase tracking-[0.16em] data-[state=active]:bg-[var(--accent)] data-[state=active]:text-white"
+            >
+              Chat
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="details" className="m-0">
@@ -221,6 +235,14 @@ function InspectorBody({ job, onClear }: { job: JobDetail; onClear: () => void }
             <ScrollArea className="h-[min(70vh,760px)] pr-4 xl:h-[calc(100vh-15rem)]">
               <CoverLetterTab job={job} compact />
             </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="research" className="m-0">
+            <JobResearchTab job={job} />
+          </TabsContent>
+
+          <TabsContent value="chat" className="m-0">
+            <JobChatTab job={job} />
           </TabsContent>
         </Tabs>
       </div>

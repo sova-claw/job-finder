@@ -4,10 +4,14 @@ import {
   CompanyDetail,
   CompanyListResponse,
   CoverLetterResponse,
+  CreateJobChatMessagePayload,
+  CreateResearchFindingPayload,
   JobDetail,
+  JobChatResponse,
   JobListResponse,
   MarketInsight,
   JobStats,
+  ResearchFindingListResponse,
   SourceGroup,
   StrategySnapshot,
   Track,
@@ -90,6 +94,34 @@ export async function generateCoverLetter(
   return request<CoverLetterResponse>(`/jobs/${jobId}/cover-letter`, {
     method: "POST",
     body: JSON.stringify({ tone })
+  });
+}
+
+export async function fetchJobResearch(jobId: string): Promise<ResearchFindingListResponse> {
+  return request<ResearchFindingListResponse>(`/research/jobs/${jobId}`);
+}
+
+export async function createJobResearch(
+  jobId: string,
+  payload: CreateResearchFindingPayload
+): Promise<void> {
+  await request(`/research/jobs/${jobId}`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function fetchJobChat(jobId: string): Promise<JobChatResponse> {
+  return request<JobChatResponse>(`/jobs/${jobId}/chat`);
+}
+
+export async function createJobChatMessage(
+  jobId: string,
+  payload: CreateJobChatMessagePayload
+): Promise<void> {
+  await request(`/jobs/${jobId}/chat`, {
+    method: "POST",
+    body: JSON.stringify(payload)
   });
 }
 

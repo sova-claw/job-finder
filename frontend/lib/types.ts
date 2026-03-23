@@ -40,6 +40,70 @@ export interface JobDetail extends JobSummary {
   extracted_at: string | null;
 }
 
+export interface ResearchEvidence {
+  url: string;
+  title: string | null;
+  source_domain: string | null;
+  snippet: string | null;
+}
+
+export interface ResearchFinding {
+  id: string;
+  job_id: string | null;
+  company_snapshot_id: string | null;
+  finding_type: string;
+  title: string;
+  summary: string;
+  confidence: number | null;
+  tags: string[] | null;
+  evidence: ResearchEvidence[] | null;
+  source_kind: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ResearchFindingListResponse {
+  items: ResearchFinding[];
+  total: number;
+}
+
+export interface CreateResearchFindingPayload {
+  finding_type?: string;
+  title: string;
+  summary: string;
+  confidence?: number | null;
+  tags?: string[] | null;
+  source_kind?: string;
+  created_by?: string;
+  source_url?: string | null;
+  source_title?: string | null;
+  source_domain?: string | null;
+  source_snippet?: string | null;
+}
+
+export type JobChatRole = "user" | "assistant" | "system";
+
+export interface JobChatMessage {
+  id: string;
+  job_id: string;
+  role: JobChatRole;
+  author: string | null;
+  content: string;
+  created_at: string | null;
+}
+
+export interface JobChatResponse {
+  items: JobChatMessage[];
+  total: number;
+}
+
+export interface CreateJobChatMessagePayload {
+  role?: JobChatRole;
+  author?: string;
+  content: string;
+}
+
 export interface JobListResponse {
   items: JobSummary[];
   total: number;
