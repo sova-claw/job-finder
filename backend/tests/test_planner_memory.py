@@ -131,6 +131,20 @@ def test_planner_memory_store_records_human_feedback(tmp_path: Path) -> None:
     assert "coaching updated C1:100.0" in content
 
 
+def test_planner_memory_store_records_human_first_feedback(tmp_path: Path) -> None:
+    memory_path = tmp_path / "PLANNER_MEMORY.md"
+    store = PlannerMemoryStore(str(memory_path))
+
+    store.record_human_feedback(
+        "C1:100.0",
+        "Claude, talk with me as human first and do not sound robotic.",
+    )
+
+    content = memory_path.read_text(encoding="utf-8")
+
+    assert "Answer direct Slack questions like a human teammate first." in content
+
+
 def test_planner_memory_store_accumulates_coaching_feedback(tmp_path: Path) -> None:
     memory_path = tmp_path / "PLANNER_MEMORY.md"
     store = PlannerMemoryStore(str(memory_path))

@@ -18,6 +18,7 @@ from app.agent_bridge.service import (
     event_dedup_key,
     extract_ollama_model,
     inject_known_mentions,
+    looks_like_conversational_planner_request,
     looks_like_planner_coaching,
     looks_like_planning_request,
     looks_like_status_request,
@@ -113,6 +114,13 @@ def test_prompt_builders_include_context(tmp_path: Path) -> None:
     planner_prompt = build_planner_prompt(
         messages, settings=settings, repo_state="branch main", limit=8
     )
+    conversation_prompt = build_planner_prompt(
+        messages,
+        settings=settings,
+        repo_state="branch main",
+        limit=8,
+        conversation_mode=True,
+    )
     executor_prompt = build_executor_prompt(
         messages,
         "Do ATS first.",
@@ -128,6 +136,7 @@ def test_prompt_builders_include_context(tmp_path: Path) -> None:
     )
 
     assert "stable context" in planner_prompt
+    assert "Reply like a strong human teammate first." in conversation_prompt
     assert "rolling memory" in planner_prompt
     assert "goal board" in planner_prompt
     assert "branch main" in executor_prompt
@@ -411,7 +420,11 @@ def test_detect_auto_stop_reason_and_status_request_helpers() -> None:
     assert looks_like_status_request("implement the next step") is False
     assert looks_like_planning_request("plan the next technical step") is True
     assert looks_like_planning_request("give me status") is False
+    assert looks_like_conversational_planner_request("Hello, what is our roadmap?") is True
+    assert looks_like_conversational_planner_request("talk with me as human first") is True
+    assert looks_like_conversational_planner_request("plan the next technical step") is False
     assert looks_like_planner_coaching("Claude is too technical and should be shorter.") is True
+    assert looks_like_planner_coaching("Claude, talk with me as human first.") is True
     assert looks_like_planner_coaching("please ship the parser") is False
 
 

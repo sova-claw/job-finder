@@ -40,6 +40,20 @@ Rules:
 - success check must be observable
 - make the handoff directly runnable by Codex"""
 
+PLANNER_CONVERSATION_INSTRUCTIONS = """You are Claude Code
+acting as the planner for this repository.
+
+Use the provided planner context, planner memory, goal board,
+repo state, and Slack thread transcript.
+The latest Slack message is a direct human conversation or coaching message.
+Reply like a strong human teammate first.
+Rules:
+- answer the person's actual question directly
+- sound natural, warm, and clear
+- no rigid Goal/Decision/Task template unless the thread explicitly asks for planning
+- keep it short enough to scan quickly in Slack
+- if useful, end with one concrete next move or offer"""
+
 EXECUTOR_INSTRUCTIONS = """You are Codex acting as the executor for this repository.
 
 Use the provided planner handoff, executor context, planner context, planner memory, goal board,
@@ -169,12 +183,16 @@ def build_planner_prompt(
     settings: BridgeSettings,
     repo_state: str,
     limit: int,
+    conversation_mode: bool = False,
 ) -> str:
     planner_context = read_text_file(settings.planner_context_path)
     planner_memory = read_text_file(settings.planner_memory_path)
     goal_board = read_text_file(settings.planner_goals_path)
+    instructions = (
+        PLANNER_CONVERSATION_INSTRUCTIONS if conversation_mode else PLANNER_INSTRUCTIONS
+    )
     return (
-        f"{PLANNER_INSTRUCTIONS}\n\n"
+        f"{instructions}\n\n"
         f"Planner context:\n{planner_context or '(missing)'}\n\n"
         f"Planner memory:\n{planner_memory or '(missing)'}\n\n"
         f"Goal board:\n{goal_board or '(missing)'}\n\n"
@@ -481,6 +499,47 @@ def looks_like_planning_request(text: str) -> bool:
     )
 
 
+def looks_like_conversational_planner_request(text: str) -> bool:
+    lowered = text.strip().lower()
+    if not lowered:
+        return False
+    if looks_like_planning_request(lowered):
+        return False
+    if any(
+        phrase in lowered
+        for phrase in [
+            "talk with me",
+            "as human",
+            "human first",
+            "speak like human",
+            "speak normally",
+            "not robot",
+            "not robotic",
+            "too robotic",
+        ]
+    ):
+        return True
+    if lowered.endswith("?"):
+        return True
+    return any(
+        lowered.startswith(prefix)
+        for prefix in [
+            "hi",
+            "hello",
+            "hey",
+            "what",
+            "how",
+            "why",
+            "can you",
+            "could you",
+            "do you",
+            "are you",
+            "where",
+            "when",
+        ]
+    )
+
+
 def looks_like_planner_coaching(text: str) -> bool:
     lowered = text.strip().lower()
     return any(
@@ -491,6 +550,11 @@ def looks_like_planner_coaching(text: str) -> bool:
             "human readable",
             "human-readable",
             "more human",
+            "human first",
+            "talk with me",
+            "not robot",
+            "not robotic",
+            "too robotic",
             "too long",
             "shorter",
             "planner",
@@ -1192,6 +1256,12 @@ class SlackAgentBridge:
     ) -> None:
         repo_state = await collect_repo_state(self.workdir)
         history = self.sessions.get(thread_key)
+        latest_message = history[-1] if history else None
+        conversation_mode = bool(
+            latest_message
+            and latest_message.role == "user"
+            and looks_like_conversational_planner_request(latest_message.content)
+        )
         if should_auto_summarize_for_planner(
             history,
             threshold=self.settings.auto_specialist_summary_threshold,
@@ -1211,6 +1281,7 @@ class SlackAgentBridge:
                 settings=self.settings,
                 repo_state=repo_state,
                 limit=self.settings.max_history_messages,
+                conversation_mode=conversation_mode,
             ),
             cwd=self.workdir,
         )
@@ -1221,13 +1292,14 @@ class SlackAgentBridge:
             author="Claude planner",
             content=planner_reply,
         )
-        self.planner_memory.record_planner_reply(thread_key, planner_reply)
-        self.goal_board.record_planner_reply(thread_key, planner_reply)
+        if not conversation_mode:
+            self.planner_memory.record_planner_reply(thread_key, planner_reply)
+            self.goal_board.record_planner_reply(thread_key, planner_reply)
         await post_long_message(
             client,
             channel=channel,
             thread_ts=thread_ts,
-            header="Claude planner",
+            header="Claude",
             content=planner_reply,
         )
 
@@ -1268,7 +1340,7 @@ class SlackAgentBridge:
             client,
             channel=channel,
             thread_ts=thread_ts,
-            header="Codex executor",
+            header="Codex",
             content=executor_reply,
         )
         if (
@@ -1326,7 +1398,7 @@ class SlackAgentBridge:
             client,
             channel=channel,
             thread_ts=thread_ts,
-            header="Codex planner mode",
+            header="Codex",
             content=planner_reply,
         )
         if self.settings.planner_post_token and text_targets_planner(planner_reply, self.settings):
@@ -1380,7 +1452,7 @@ class SlackAgentBridge:
             client,
             channel=channel,
             thread_ts=thread_ts,
-            header=f"{self.settings.specialist_display_name} specialist",
+            header=self.settings.specialist_display_name,
             content=specialist_reply,
         )
         if (

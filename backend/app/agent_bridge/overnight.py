@@ -213,7 +213,7 @@ async def run_overnight_loop(
             clients.planner,
             channel=channel_id,
             thread_ts=thread_ts,
-            header=f"Claude planner · cycle {cycle}",
+            header=f"Claude · cycle {cycle}",
             content=planner_reply,
         )
 
@@ -252,7 +252,7 @@ async def run_overnight_loop(
             clients.executor,
             channel=channel_id,
             thread_ts=thread_ts,
-            header=f"Codex executor · cycle {cycle}",
+            header=f"Codex · cycle {cycle}",
             content=executor_reply,
         )
 

@@ -169,6 +169,14 @@ def summarize_coaching_feedback(text: str) -> str:
 
     if "human-readable" in lowered or "human readable" in lowered or "more human" in lowered:
         notes.append("Use more human-readable language.")
+    if (
+        "human first" in lowered
+        or "talk with me" in lowered
+        or "not robot" in lowered
+        or "not robotic" in lowered
+        or "too robotic" in lowered
+    ):
+        notes.append("Answer direct Slack questions like a human teammate first.")
     if "too technical" in lowered or "less technical" in lowered:
         notes.append("Reduce technical jargon in planner replies.")
     if "too long" in lowered or "shorter" in lowered or "short" in lowered:
