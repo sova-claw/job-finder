@@ -40,6 +40,11 @@ def derive_verdict(match_score: int | None) -> Verdict:
 
 
 def serialize_job(job: Job) -> dict[str, Any]:
+    slack_channel_url = (
+        f"https://slack.com/app_redirect?channel={job.slack_channel_id}"
+        if job.slack_channel_id
+        else None
+    )
     return {
         "id": job.id,
         "url": job.url,
@@ -63,6 +68,10 @@ def serialize_job(job: Job) -> dict[str, Any]:
         "posted_at": job.posted_at,
         "scraped_at": job.scraped_at,
         "scored_at": job.scored_at,
+        "slack_channel_id": job.slack_channel_id,
+        "slack_channel_name": job.slack_channel_name,
+        "slack_channel_url": slack_channel_url,
+        "slack_channel_created_at": job.slack_channel_created_at,
         "is_active": job.is_active,
         "raw_text": job.raw_text,
         "requirements_must": job.requirements_must,

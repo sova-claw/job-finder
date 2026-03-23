@@ -41,6 +41,71 @@ def test_build_slack_payload_contains_key_fields() -> None:
     assert any("#jobs-poland" in field["text"] for field in blocks[1]["fields"])
 
 
+def test_build_job_channel_name_is_slack_safe() -> None:
+    name = slack.build_job_channel_name(
+        _job(
+            id="job_123456789",
+            company="monday.com",
+            title="Senior QA / Automation Engineer (Python)",
+        )
+    )
+
+    assert name.startswith("job-monday-com-senior-qa-automation-engineer-python-")
+    assert len(name) <= 80
+    assert "/" not in name
+
+
+@pytest.mark.asyncio
+async def test_ensure_job_slack_channel_creates_and_persists(monkeypatch) -> None:
+    monkeypatch.setattr(slack.settings, "slack_bot_token", "xoxb-test")
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class FakeClient:
+        async def conversations_create(self, *, name: str, is_private: bool):
+            calls.append(("create", {"name": name, "is_private": is_private}))
+            return {"channel": {"id": "C123", "name": name}}
+
+        async def conversations_join(self, *, channel: str):
+            calls.append(("join", {"channel": channel}))
+            return {"ok": True}
+
+        async def conversations_setTopic(self, *, channel: str, topic: str):
+            calls.append(("topic", {"channel": channel, "topic": topic}))
+            return {"ok": True}
+
+        async def chat_postMessage(self, *, channel: str, **payload):
+            calls.append(("post", {"channel": channel, "payload": payload}))
+            return {"ok": True}
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.commits = 0
+            self.refreshed = 0
+
+        async def commit(self) -> None:
+            self.commits += 1
+
+        async def refresh(self, _job: Job) -> None:
+            self.refreshed += 1
+
+    job = _job(id="job-42", company="Sentry", title="Senior QA Automation Engineer")
+    session = FakeSession()
+
+    summary = await slack.ensure_job_slack_channel(session, job, client=FakeClient())  # type: ignore[arg-type]
+
+    assert summary.job_id == "job-42"
+    assert summary.channel_id == "C123"
+    assert summary.channel_name == job.slack_channel_name
+    assert summary.channel_url == "https://slack.com/app_redirect?channel=C123"
+    assert summary.created is True
+    assert session.commits == 1
+    assert session.refreshed == 1
+    assert job.slack_channel_id == "C123"
+    assert job.slack_channel_name is not None
+    assert [name for name, _payload in calls] == ["create", "join", "topic", "post"]
+
+
 @pytest.mark.asyncio
 async def test_dispatch_new_jobs_to_slack_marks_jobs_notified(monkeypatch) -> None:
     monkeypatch.setattr(slack.settings, "slack_bot_token", "xoxb-test")

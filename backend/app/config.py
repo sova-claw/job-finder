@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     slack_webhook_url: str = ""
     slack_bot_token: str = ""
     slack_channel_overrides_json: str = ""
+    slack_job_channel_prefix: str = "job"
     slack_post_interval_minutes: int = 15
     slack_min_match_score: int = 0
     slack_max_posts_per_run: int = 10

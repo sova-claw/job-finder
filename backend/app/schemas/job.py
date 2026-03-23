@@ -53,6 +53,10 @@ class JobSummary(APIModel):
     posted_at: datetime | None = None
     scraped_at: datetime | None = None
     scored_at: datetime | None = None
+    slack_channel_id: str | None = None
+    slack_channel_name: str | None = None
+    slack_channel_url: str | None = None
+    slack_channel_created_at: datetime | None = None
     is_active: bool
 
 
@@ -96,3 +100,12 @@ class MarketInsight(BaseModel):
     top_skills: list[SkillCount]
     salary_distribution: list[SalaryBandCount]
     remote_ratio: float
+
+
+class JobSlackChannelResponse(BaseModel):
+    job_id: str
+    channel_id: str
+    channel_name: str
+    channel_url: str
+    created: bool
+    created_at: datetime | None = None

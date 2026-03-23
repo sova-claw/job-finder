@@ -4,8 +4,8 @@ import { useDeferredValue } from "react";
 import { ExternalLink } from "lucide-react";
 
 import { CoverLetterTab } from "@/components/CoverLetterTab";
-import { JobChatTab } from "@/components/JobChatTab";
 import { JobResearchTab } from "@/components/JobResearchTab";
+import { JobSlackTab } from "@/components/JobSlackTab";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -149,7 +149,7 @@ function InspectorBody({ job, onClear }: { job: JobDetail; onClear: () => void }
               value="chat"
               className="rounded-full px-3 text-xs uppercase tracking-[0.16em] data-[state=active]:bg-[var(--accent)] data-[state=active]:text-white"
             >
-              Chat
+              Slack
             </TabsTrigger>
           </TabsList>
 
@@ -242,7 +242,7 @@ function InspectorBody({ job, onClear }: { job: JobDetail; onClear: () => void }
           </TabsContent>
 
           <TabsContent value="chat" className="m-0">
-            <JobChatTab job={job} />
+            <JobSlackTab job={job} />
           </TabsContent>
         </Tabs>
       </div>

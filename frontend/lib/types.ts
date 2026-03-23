@@ -29,6 +29,11 @@ export interface JobSummary {
   verdict: Verdict;
   posted_at: string | null;
   scraped_at: string | null;
+  scored_at: string | null;
+  slack_channel_id: string | null;
+  slack_channel_name: string | null;
+  slack_channel_url: string | null;
+  slack_channel_created_at: string | null;
   is_active: boolean;
 }
 
@@ -38,6 +43,15 @@ export interface JobDetail extends JobSummary {
   requirements_nice: string[] | null;
   gaps: Gap[] | null;
   extracted_at: string | null;
+}
+
+export interface JobSlackChannelResponse {
+  job_id: string;
+  channel_id: string;
+  channel_name: string;
+  channel_url: string;
+  created: boolean;
+  created_at: string | null;
 }
 
 export interface ResearchEvidence {

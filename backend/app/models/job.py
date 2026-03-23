@@ -46,4 +46,7 @@ class Job(Base):
     extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     slack_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    slack_channel_id: Mapped[str | None] = mapped_column(Text)
+    slack_channel_name: Mapped[str | None] = mapped_column(Text)
+    slack_channel_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)

@@ -8,6 +8,7 @@ import {
   CreateResearchFindingPayload,
   JobDetail,
   JobChatResponse,
+  JobSlackChannelResponse,
   JobListResponse,
   MarketInsight,
   JobStats,
@@ -122,6 +123,12 @@ export async function createJobChatMessage(
   await request(`/jobs/${jobId}/chat`, {
     method: "POST",
     body: JSON.stringify(payload)
+  });
+}
+
+export async function ensureJobSlackChannel(jobId: string): Promise<JobSlackChannelResponse> {
+  return request<JobSlackChannelResponse>(`/jobs/${jobId}/slack-channel`, {
+    method: "POST"
   });
 }
 
