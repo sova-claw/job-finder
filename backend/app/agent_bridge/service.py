@@ -15,6 +15,7 @@ from slack_sdk.web.async_client import AsyncWebClient
 from app.agent_bridge.config import BridgeSettings
 from app.agent_bridge.planner_memory import PlannerMemoryStore
 from app.agent_bridge.session_store import SessionMessage, ThreadSessionStore
+from app.agent_bridge.specialist_memory import SpecialistMemoryStore
 
 PLANNER_INSTRUCTIONS = """You are Claude Code acting as the planner for this repository.
 
@@ -38,7 +39,8 @@ Keep it concise and concrete."""
 
 SPECIALIST_INSTRUCTIONS = """You are Llama acting as a specialist support agent for this repository.
 
-Use the provided planner context, planner memory, repo state, and Slack thread transcript.
+Use the provided specialist context, specialist memory, planner context,
+repo state, and Slack thread transcript.
 Your role is limited to critique, summarization, and structured extraction.
 Do not plan the project or make code changes.
 Respond with these sections only:
@@ -147,11 +149,13 @@ def build_specialist_prompt(
     limit: int,
 ) -> str:
     planner_context = read_text_file(settings.planner_context_path)
-    planner_memory = read_text_file(settings.planner_memory_path)
+    specialist_context = read_text_file(settings.specialist_context_path)
+    specialist_memory = read_text_file(settings.specialist_memory_path)
     return (
         f"{SPECIALIST_INSTRUCTIONS}\n\n"
+        f"Specialist context:\n{specialist_context or '(missing)'}\n\n"
+        f"Specialist memory:\n{specialist_memory or '(missing)'}\n\n"
         f"Planner context:\n{planner_context or '(missing)'}\n\n"
-        f"Planner memory:\n{planner_memory or '(missing)'}\n\n"
         f"Repo state:\n{repo_state or '(unavailable)'}\n\n"
         f"Slack thread transcript:\n{render_transcript(messages, limit=limit)}"
     )
@@ -420,6 +424,7 @@ class SlackAgentBridge:
         self.settings = settings
         self.sessions = ThreadSessionStore(settings.sessions_path)
         self.planner_memory = PlannerMemoryStore(settings.planner_memory_path)
+        self.specialist_memory = SpecialistMemoryStore(settings.specialist_memory_path)
         self.workdir = Path(settings.bridge_workdir)
         self.app = AsyncApp(token=settings.slack_bot_token)
         self.bot_user_id = ""
@@ -847,6 +852,7 @@ class SlackAgentBridge:
             cwd=self.workdir,
         )
         specialist_reply = inject_known_mentions(specialist_reply, self.settings)
+        self.specialist_memory.record_specialist_reply(thread_key, specialist_reply)
         self.sessions.append(
             thread_key,
             role="specialist",

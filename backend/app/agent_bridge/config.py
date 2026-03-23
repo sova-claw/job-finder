@@ -26,6 +26,12 @@ class BridgeSettings(BaseSettings):
     planner_memory_path: str = str(
         Path(__file__).resolve().parents[3] / "PLANNER_MEMORY.md"
     )
+    specialist_context_path: str = str(
+        Path(__file__).resolve().parents[3] / "LLAMA_CONTEXT.md"
+    )
+    specialist_memory_path: str = str(
+        Path(__file__).resolve().parents[3] / "LLAMA_MEMORY.md"
+    )
     planner_bot_user_id: str = ""
     planner_bot_id: str = ""
     executor_bot_user_id: str = ""

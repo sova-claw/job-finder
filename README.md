@@ -105,6 +105,7 @@ Recommended mode for stable planning context:
 - `local-roles`
 - `@Claude` is handled by the local bridge, not the native Slack Claude app
 - planner context is loaded from `PLANNER_CONTEXT.md` and `PLANNER_MEMORY.md`
+- specialist context is loaded from `LLAMA_CONTEXT.md` and `LLAMA_MEMORY.md`
 - thread transcript is loaded from local session storage
 - repo state is injected on each planner call
 - optional night-shift runner can execute bounded `Claude -> Codex` cycles in a new Slack thread

@@ -68,12 +68,18 @@ def test_thread_session_store_upsert_updates_existing_message(tmp_path: Path) ->
 def test_prompt_builders_include_context(tmp_path: Path) -> None:
     context = tmp_path / "PLANNER_CONTEXT.md"
     memory = tmp_path / "PLANNER_MEMORY.md"
+    specialist_context = tmp_path / "LLAMA_CONTEXT.md"
+    specialist_memory = tmp_path / "LLAMA_MEMORY.md"
     context.write_text("stable context")
     memory.write_text("rolling memory")
+    specialist_context.write_text("specialist context")
+    specialist_memory.write_text("specialist memory")
     settings = BridgeSettings(
         _env_file=None,
         planner_context_path=str(context),
         planner_memory_path=str(memory),
+        specialist_context_path=str(specialist_context),
+        specialist_memory_path=str(specialist_memory),
     )
     messages = [
         SessionMessage(
@@ -106,6 +112,8 @@ def test_prompt_builders_include_context(tmp_path: Path) -> None:
     assert "branch main" in executor_prompt
     assert "Planner handoff" in executor_prompt
     assert "Slack thread transcript" in specialist_prompt
+    assert "specialist context" in specialist_prompt
+    assert "specialist memory" in specialist_prompt
 
 
 def test_planner_review_suffix_in_local_roles_uses_trigger_phrase() -> None:

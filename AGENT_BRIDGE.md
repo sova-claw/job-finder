@@ -25,6 +25,14 @@ The planner state lives in the project:
 
 Every planner call receives all four inputs.
 
+For the optional specialist bot, the knowledge state also lives in the project:
+
+- `LLAMA_CONTEXT.md`
+  - stable specialist role and output rules
+- `LLAMA_MEMORY.md`
+  - rolling specialist memory
+  - updated after each specialist reply
+
 ## How Memory Updates Work
 
 After a planner reply, the bridge extracts:
@@ -126,6 +134,8 @@ Optional:
 BRIDGE_WORKDIR=/Users/sova/Desktop/Projects/job_finder
 PLANNER_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/PLANNER_CONTEXT.md
 PLANNER_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/PLANNER_MEMORY.md
+SPECIALIST_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/LLAMA_CONTEXT.md
+SPECIALIST_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/LLAMA_MEMORY.md
 SESSIONS_PATH=/Users/sova/Desktop/Projects/job_finder/.codex/agent_bridge_sessions.json
 PLANNER_BOT_USER_ID=
 EXECUTOR_BOT_USER_ID=
@@ -182,6 +192,11 @@ For critique, summarization, or structured extraction:
 ```text
 @Llama summarize the thread and list the main risks.
 ```
+
+The specialist bot keeps a bounded local memory:
+- `Mode` updates the current working mode
+- `Findings` are summarized into recent specialist notes and structured findings
+- `Recommended handoff` is stored as the next likely handoff target
 
 Later in the same thread, plain follow-ups can work too:
 
