@@ -51,6 +51,19 @@ def test_build_slack_payload_adds_workspace_button_when_channel_exists() -> None
     assert any(action.get("text", {}).get("text") == "Open workspace" for action in actions)
 
 
+def test_build_jobs_inbox_job_payload_is_compact_and_signal_dense() -> None:
+    payload = slack.build_jobs_inbox_job_payload(_job())
+
+    assert payload["text"] == "Bolt - Senior QA Automation Engineer [P1|82]"
+    body = payload["blocks"][0]["text"]["text"]
+    assert "[P1|82] Bolt - Senior QA Automation Engineer" in body
+    assert "Salary: $6,000-$8,000" in body
+    assert "Lang: Python" in body
+    assert "Source: Djinni" in body
+    assert "Location: Poland" in body
+    assert payload["blocks"][0]["accessory"]["text"]["text"] == "Open job"
+
+
 def test_build_jobs_inbox_payload_has_date_salary_priority_and_source() -> None:
     payload = slack.build_jobs_inbox_payload([_job()])
 
@@ -324,6 +337,37 @@ async def test_dispatch_new_jobs_to_slack_marks_jobs_notified(monkeypatch) -> No
     assert session.commits == 2
     assert all(job.slack_notified_at is not None for job in jobs)
     assert routed_jobs == ["job-1", "job-2"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_job_to_slack_uses_compact_payload_for_jobs_inbox(monkeypatch) -> None:
+    monkeypatch.setattr(slack.settings, "slack_bot_token", "xoxb-test")
+
+    posted: list[tuple[str, dict[str, object]]] = []
+
+    async def fake_post_to_channel(
+        _client,
+        channel_name: str,
+        payload: dict[str, object],
+        *,
+        cache: dict[str, str],
+    ) -> None:
+        del _client, cache
+        posted.append((channel_name, payload))
+
+    monkeypatch.setattr(slack, "_post_to_channel", fake_post_to_channel)
+
+    channels = await slack.dispatch_job_to_slack(
+        object(),  # type: ignore[arg-type]
+        _job(match_score=60),
+        client=object(),  # type: ignore[arg-type]
+        channel_cache={},
+    )
+
+    assert channels == ["#jobs-inbox"]
+    assert posted[0][0] == "#jobs-inbox"
+    assert posted[0][1]["text"] == "Bolt - Senior QA Automation Engineer [P2|60]"
+    assert len(posted[0][1]["blocks"]) == 1
 
 
 @pytest.mark.asyncio

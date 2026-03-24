@@ -120,6 +120,19 @@ def _format_matches(matches: list[str] | None) -> str:
     return ", ".join(matches)
 
 
+def _language_signal(job: Job) -> str:
+    keywords = ("Python", "TypeScript", "JavaScript", "Java", "Go", "C#", "Ruby", "PHP")
+    haystacks = [job.title or ""]
+    haystacks.extend(job.hard_matches or [])
+    haystacks.extend(job.soft_matches or [])
+
+    found: list[str] = []
+    for keyword in keywords:
+        if any(keyword.lower() in value.lower() for value in haystacks):
+            found.append(keyword)
+    return ", ".join(found[:2]) if found else "n/a"
+
+
 def _truncate(value: str, width: int) -> str:
     if len(value) <= width:
         return value.ljust(width)
@@ -320,6 +333,37 @@ def build_slack_payload(job: Job, *, routed_channels: list[str] | None = None) -
                 "type": "actions",
                 "elements": actions,
             },
+        ],
+    }
+
+
+def build_jobs_inbox_job_payload(job: Job) -> dict[str, object]:
+    company = job.company or "Unknown company"
+    title = job.title or "Untitled role"
+    score = job.match_score or 0
+    priority = _priority_label(job)
+    salary = _format_salary(job)
+    language = _language_signal(job)
+    source = job.source or "n/a"
+    location = _format_location(job)
+
+    summary_line = (
+        f"[{priority}|{score}] {company} - {title}\n"
+        f"Salary: {salary} | Lang: {language} | Source: {source} | Location: {location}"
+    )
+
+    return {
+        "text": f"{company} - {title} [{priority}|{score}]",
+        "blocks": [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": summary_line},
+                "accessory": {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Open job"},
+                    "url": job.url,
+                },
+            }
         ],
     }
 
@@ -683,8 +727,12 @@ async def dispatch_job_to_slack(
     cache = channel_cache if channel_cache is not None else {}
     if should_auto_create_job_channel(job):
         await ensure_job_slack_channel(session, job, client=slack_client)
-    payload = build_slack_payload(job, routed_channels=channels)
     for channel in channels:
+        payload = (
+            build_jobs_inbox_job_payload(job)
+            if channel == "#jobs-inbox"
+            else build_slack_payload(job, routed_channels=channels)
+        )
         await _post_to_channel(slack_client, channel, payload, cache=cache)
     return channels
 
