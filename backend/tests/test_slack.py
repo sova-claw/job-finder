@@ -155,12 +155,12 @@ def test_build_plan_update_payload_is_short_and_structured() -> None:
         next_step="Choose the clean integration path",
     )
 
-    assert payload["text"] == "🟡 StartupIndex source · Doing"
+    assert payload["text"] == "🟢 StartupIndex source · Doing"
     attachment = payload["attachments"][0]
     assert attachment["color"] == "#1D9E75"
     blocks = attachment["blocks"]
-    assert blocks[0]["type"] == "section"
-    assert blocks[0]["text"]["text"] == "🟡 *Doing*"
+    assert blocks[0]["type"] == "header"
+    assert blocks[0]["text"]["text"] == "🟢  Work started"
     assert blocks[1]["text"]["text"] == (
         "*Task*  `StartupIndex source`\nStartupIndex discovery source"
     )
@@ -186,9 +186,10 @@ def test_build_plan_update_payload_is_shorter_inside_thread() -> None:
     attachment = payload["attachments"][0]
     assert attachment["color"] == "#1D9E75"
     blocks = attachment["blocks"]
-    assert blocks[0]["text"]["text"] == "✅ *Done*\nConfirmed it has company pages and apply paths."
-    assert blocks[1]["elements"][0]["text"].startswith("`")
-    assert blocks[2]["elements"][0]["text"] == "➡️ Next: Wire the importer."
+    assert blocks[0]["text"]["text"] == "✅  Task complete"
+    assert blocks[1]["text"]["text"] == "Confirmed it has company pages and apply paths."
+    assert blocks[2]["elements"][0]["text"].startswith("`")
+    assert blocks[3]["elements"][0]["text"] == "➡️ Next: Wire the importer."
 
 
 def test_fit_signal_has_fallbacks_for_score_ranges() -> None:
@@ -637,6 +638,6 @@ async def test_post_plan_update_uses_existing_thread(monkeypatch) -> None:
 
     assert posted[0][0] == "#plans"
     assert posted[0][2] == "111.222"
-    assert posted[0][1]["text"] == "🔄 Update: Found company pages. Checking role pages now."
+    assert posted[0][1]["text"] == "🔵 Update: Found company pages. Checking role pages now."
     assert summary.thread_ts == "111.222"
     assert summary.post_ts == "333.444"

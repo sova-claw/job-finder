@@ -182,12 +182,12 @@ def _fit_emoji(job: Job) -> str:
 def _plan_status_emoji(status: str) -> str:
     normalized = status.strip().lower()
     mapping = {
-        "started": "🟡",
-        "doing": "🟡",
-        "progress": "🔄",
+        "started": "🟢",
+        "doing": "🟢",
+        "progress": "🔵",
         "done": "✅",
         "next": "➡️",
-        "blocked": "⛔",
+        "blocked": "❓",
         "info": "🔔",
     }
     return mapping.get(normalized, "🔔")
@@ -200,6 +200,20 @@ def _plan_status_label(status: str) -> str:
         "doing": "Doing",
         "progress": "Update",
         "done": "Done",
+        "next": "Next",
+        "blocked": "Blocked",
+        "info": "Note",
+    }
+    return mapping.get(normalized, "Update")
+
+
+def _plan_status_heading(status: str) -> str:
+    normalized = status.strip().lower()
+    mapping = {
+        "started": "Work started",
+        "doing": "Work started",
+        "progress": "In progress",
+        "done": "Task complete",
         "next": "Next",
         "blocked": "Blocked",
         "info": "Note",
@@ -257,6 +271,13 @@ def _plan_task_section(
             "url": link,
         }
     return section
+
+
+def _plan_header_block(text: str) -> dict[str, object]:
+    return {
+        "type": "header",
+        "text": {"type": "plain_text", "text": text, "emoji": True},
+    }
 
 
 def _plan_status_section(*, emoji: str, label: str, message: str) -> dict[str, object]:
@@ -611,6 +632,7 @@ def build_plan_update_payload(
 ) -> dict[str, object]:
     emoji = _plan_status_emoji(status)
     status_label = _plan_status_label(status)
+    status_heading = _plan_status_heading(status)
     color = _plan_status_color(status)
     timestamp = datetime.now().strftime("%H:%M")
     title_text = title.strip()
@@ -620,7 +642,11 @@ def build_plan_update_payload(
 
     if threaded:
         blocks: list[dict[str, object]] = [
-            _plan_status_section(emoji=emoji, label=status_label, message=message_text),
+            _plan_header_block(f"{emoji}  {status_heading}"),
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": message_text},
+            },
             _plan_meta_context(timestamp=timestamp),
         ]
         if next_text:
@@ -636,7 +662,7 @@ def build_plan_update_payload(
         }
 
     blocks = [
-        _plan_status_section(emoji=emoji, label=status_label, message=""),
+        _plan_header_block(f"{emoji}  {status_heading}"),
         _plan_task_section(title=title_text, message=message_text, link=link_text),
         _plan_meta_context(
             timestamp=timestamp,
