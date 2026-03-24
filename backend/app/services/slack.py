@@ -158,6 +158,17 @@ def _build_channel_url(channel_id: str) -> str:
     return f"https://slack.com/app_redirect?channel={channel_id}"
 
 
+def _fit_emoji(job: Job) -> str:
+    score = job.match_score
+    if score is None:
+        return "❔"
+    if score >= 80:
+        return "🟢"
+    if score >= 55:
+        return "🟡"
+    return "⚪"
+
+
 def _slugify_channel_part(value: str | None, *, fallback: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
     return normalized or fallback
@@ -282,15 +293,20 @@ def should_auto_create_job_channel(job: Job) -> bool:
 def build_slack_payload(job: Job, *, routed_channels: list[str] | None = None) -> dict[str, object]:
     title = job.title or "Untitled role"
     company = job.company or "Unknown company"
-    score = f"{job.match_score or 0}"
+    score = job.match_score or 0
     salary = _format_salary(job)
     top_gap = derive_top_gap(job.gaps) or "No major gap"
     location = _format_location(job)
     source = f"{job.source_group} / {job.source}"
-    posted_at = job.posted_at.date().isoformat() if job.posted_at else "n/a"
-    hard_matches = _format_matches(job.hard_matches)
-    soft_matches = _format_matches(job.soft_matches)
+    hard_matches = _format_matches(job.hard_matches[:2] if job.hard_matches else None)
     routed = ", ".join(routed_channels or []) or "n/a"
+    summary = (
+        f"{_fit_emoji(job)} *{company}* — {title}\n"
+        f"`{_priority_label(job)} · {score}`  •  {salary}  •  {location}  •  {source}\n"
+        f"Strongest match: {hard_matches}\n"
+        f"Gap: {top_gap}\n"
+        f"Routes: {routed}"
+    )
 
     actions: list[dict[str, object]] = [
         {
@@ -309,25 +325,11 @@ def build_slack_payload(job: Job, *, routed_channels: list[str] | None = None) -
         )
 
     return {
-        "text": f"New CIS job: {title} at {company}",
+        "text": f"{_fit_emoji(job)} {company} — {title}",
         "blocks": [
             {
-                "type": "header",
-                "text": {"type": "plain_text", "text": f"{title} @ {company}"},
-            },
-            {
                 "type": "section",
-                "fields": [
-                    {"type": "mrkdwn", "text": f"*Score*\n{score}"},
-                    {"type": "mrkdwn", "text": f"*Salary*\n{salary}"},
-                    {"type": "mrkdwn", "text": f"*Location*\n{location}"},
-                    {"type": "mrkdwn", "text": f"*Source*\n{source}"},
-                    {"type": "mrkdwn", "text": f"*Hard matches*\n{hard_matches}"},
-                    {"type": "mrkdwn", "text": f"*Soft matches*\n{soft_matches}"},
-                    {"type": "mrkdwn", "text": f"*Top gap*\n{top_gap}"},
-                    {"type": "mrkdwn", "text": f"*Posted*\n{posted_at}"},
-                    {"type": "mrkdwn", "text": f"*Routed*\n{routed}"},
-                ],
+                "text": {"type": "mrkdwn", "text": summary},
             },
             {
                 "type": "actions",
@@ -348,12 +350,12 @@ def build_jobs_inbox_job_payload(job: Job) -> dict[str, object]:
     location = _format_location(job)
 
     summary_line = (
-        f"[{priority}|{score}] {company} - {title}\n"
-        f"Salary: {salary} | Lang: {language} | Source: {source} | Location: {location}"
+        f"{_fit_emoji(job)} *{company}* — {title}\n"
+        f"`{priority} · {score}`  •  {salary}  •  {language}  •  {source}  •  {location}"
     )
 
     return {
-        "text": f"{company} - {title} [{priority}|{score}]",
+        "text": f"{_fit_emoji(job)} {company} — {title} [{priority}|{score}]",
         "blocks": [
             {
                 "type": "section",
@@ -370,7 +372,7 @@ def build_jobs_inbox_job_payload(job: Job) -> dict[str, object]:
 
 def build_jobs_inbox_payload(jobs: list[Job]) -> dict[str, object]:
     if not jobs:
-        table = "No active jobs in the inbox right now."
+        table = "No active jobs right now."
     else:
         jobs = sorted(
             jobs,
@@ -380,23 +382,18 @@ def build_jobs_inbox_payload(jobs: list[Job]) -> dict[str, object]:
             ),
             reverse=True,
         )
-        header = (
-            f"{'Date':<10}  {'Fit':<10}  {'Pri':<3}  {'Salary':<14}  {'Source':<10}  "
+        rows = [
+            f"{'Date':<10}  {'Fit':<9}  {'P':<2}  {'Salary':<14}  {'Src':<10}  "
             f"{'Company':<18}  {'Role':<28}"
-        )
-        separator = (
-            f"{'-' * 10}  {'-' * 10}  {'-' * 3}  {'-' * 14}  {'-' * 10}  "
-            f"{'-' * 18}  {'-' * 28}"
-        )
-        rows = [header, separator]
+        ]
         for job in jobs:
             added_date = (job.scraped_at or job.posted_at or datetime.now(UTC)).date().isoformat()
             rows.append(
                 "  ".join(
-                    [
-                        _truncate(added_date, 10),
-                        _truncate(_fit_signal(job), 10),
-                        _priority_label(job).ljust(3),
+                        [
+                            _truncate(added_date, 10),
+                        _truncate(_fit_signal(job), 9),
+                        _priority_label(job).ljust(2),
                         _truncate(_format_salary(job), 14),
                         _truncate(job.source or "n/a", 10),
                         _truncate(job.company or "Unknown", 18),
@@ -407,20 +404,17 @@ def build_jobs_inbox_payload(jobs: list[Job]) -> dict[str, object]:
         table = "```" + "\n".join(rows) + "```"
 
     return {
-        "text": "Jobs inbox snapshot",
+        "text": f"📥 Jobs inbox · {len(jobs)}",
         "blocks": [
             {
                 "type": "header",
-                "text": {"type": "plain_text", "text": f"Jobs inbox ({len(jobs)} roles)"},
+                "text": {"type": "plain_text", "text": f"📥 Jobs inbox · {len(jobs)}"},
             },
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": (
-                        "Compact backlog view with fit, salary, priority, and source.\n"
-                        f"{table}"
-                    ),
+                    "text": f"Strongest roles first.\n{table}",
                 },
             },
         ],
@@ -428,25 +422,32 @@ def build_jobs_inbox_payload(jobs: list[Job]) -> dict[str, object]:
 
 
 def build_scraper_run_payload(summary: ScraperRunSummary) -> dict[str, object]:
-    status_label = "Success" if summary.status == "success" else "Failed"
+    is_success = summary.status == "success"
+    status_label = "Success" if is_success else "Failed"
+    status_emoji = "✅" if is_success else "⚠️"
     duration = f"{summary.duration_seconds:.1f}s"
     blocks: list[dict[str, object]] = [
         {
-            "type": "header",
-            "text": {"type": "plain_text", "text": f"Scraper run · {summary.source}"},
-        },
-        {
-            "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": f"*Status*\n{status_label}"},
-                {"type": "mrkdwn", "text": f"*Duration*\n{duration}"},
-                {"type": "mrkdwn", "text": f"*Found*\n{summary.count_found}"},
-                {"type": "mrkdwn", "text": f"*New*\n{summary.count_new}"},
-                {"type": "mrkdwn", "text": f"*Skipped*\n{summary.count_skipped}"},
-                {"type": "mrkdwn", "text": f"*Failed items*\n{summary.count_failed}"},
-            ],
-        },
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"{status_emoji} *{summary.source}*  •  {duration}  •  "
+                        f"{summary.count_new} new / {summary.count_found} found\n"
+                        f"Skipped: {summary.count_skipped}"
+                    ),
+                },
+            },
     ]
+    if summary.count_failed:
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": f"Failed items: {summary.count_failed}"},
+                ],
+            }
+        )
 
     if summary.error:
         blocks.append(
@@ -454,13 +455,13 @@ def build_scraper_run_payload(summary: ScraperRunSummary) -> dict[str, object]:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*Error*\n{summary.error}",
+                    "text": f"```{summary.error}```",
                 },
             }
         )
 
     return {
-        "text": f"Scraper run: {summary.source} ({status_label.lower()})",
+        "text": f"{status_emoji} {summary.source} · {status_label.lower()}",
         "blocks": blocks,
     }
 
@@ -473,37 +474,25 @@ def _format_next_run(next_run_at: datetime | None) -> str:
 
 
 def build_scraper_schedule_payload(entries: list[ScraperScheduleEntry]) -> dict[str, object]:
-    rows = [
-        "Source           Cadence            Next run (UTC)",
-        "---------------  -----------------  --------------------",
-    ]
+    rows = []
     for entry in entries:
         rows.append(
-            "  ".join(
-                [
-                    _truncate(entry.source, 15),
-                    _truncate(entry.cadence, 17),
-                    _truncate(_format_next_run(entry.next_run_at), 20),
-                ]
-            )
+            f"• *{entry.source}* — {entry.cadence} — `{_format_next_run(entry.next_run_at)}`"
         )
 
-    table = "```" + "\n".join(rows) + "```"
+    schedule = "\n".join(rows) if rows else "No scraper jobs scheduled."
     return {
-        "text": "Scraper scheduler snapshot",
+        "text": "🕒 Scraper schedule",
         "blocks": [
             {
                 "type": "header",
-                "text": {"type": "plain_text", "text": "Scraper scheduler"},
+                "text": {"type": "plain_text", "text": "🕒 Scraper schedule"},
             },
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": (
-                        "Current scraper cadence and next scheduled runs.\n"
-                        f"{table}"
-                    ),
+                    "text": schedule,
                 },
             },
         ],

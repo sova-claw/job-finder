@@ -33,12 +33,13 @@ def _job(**overrides: object) -> Job:
 def test_build_slack_payload_contains_key_fields() -> None:
     payload = slack.build_slack_payload(_job(), routed_channels=["#jobs-poland"])
 
-    assert payload["text"] == "New CIS job: Senior QA Automation Engineer at Bolt"
+    assert payload["text"] == "🟢 Bolt — Senior QA Automation Engineer"
     blocks = payload["blocks"]
     assert isinstance(blocks, list)
-    assert any("Playwright" in field["text"] for field in blocks[1]["fields"])
-    assert any("Python, QA Automation" in field["text"] for field in blocks[1]["fields"])
-    assert any("#jobs-poland" in field["text"] for field in blocks[1]["fields"])
+    body = blocks[0]["text"]["text"]
+    assert "Playwright" in body
+    assert "Python, QA Automation" in body
+    assert "#jobs-poland" in body
 
 
 def test_build_slack_payload_adds_workspace_button_when_channel_exists() -> None:
@@ -47,33 +48,34 @@ def test_build_slack_payload_adds_workspace_button_when_channel_exists() -> None
         routed_channels=["#jobs-priority"],
     )
 
-    actions = payload["blocks"][2]["elements"]
+    actions = payload["blocks"][1]["elements"]
     assert any(action.get("text", {}).get("text") == "Open workspace" for action in actions)
 
 
 def test_build_jobs_inbox_job_payload_is_compact_and_signal_dense() -> None:
     payload = slack.build_jobs_inbox_job_payload(_job())
 
-    assert payload["text"] == "Bolt - Senior QA Automation Engineer [P1|82]"
+    assert payload["text"] == "🟢 Bolt — Senior QA Automation Engineer [P1|82]"
     body = payload["blocks"][0]["text"]["text"]
-    assert "[P1|82] Bolt - Senior QA Automation Engineer" in body
-    assert "Salary: $6,000-$8,000" in body
-    assert "Lang: Python" in body
-    assert "Source: Djinni" in body
-    assert "Location: Poland" in body
+    assert "🟢 *Bolt* — Senior QA Automation Engineer" in body
+    assert "`P1 · 82`" in body
+    assert "$6,000-$8,000" in body
+    assert "Python" in body
+    assert "Djinni" in body
+    assert "Poland" in body
     assert payload["blocks"][0]["accessory"]["text"]["text"] == "Open job"
 
 
 def test_build_jobs_inbox_payload_has_date_salary_priority_and_source() -> None:
     payload = slack.build_jobs_inbox_payload([_job()])
 
-    assert payload["text"] == "Jobs inbox snapshot"
+    assert payload["text"] == "📥 Jobs inbox · 1"
     body = payload["blocks"][1]["text"]["text"]
     assert "Date" in body
     assert "Fit" in body
     assert "Salary" in body
-    assert "Pri" in body
-    assert "Source" in body
+    assert "P" in body
+    assert "Src" in body
     assert "OK strong" in body
     assert "2026-03-22" in body
     assert "Bolt" in body
@@ -92,13 +94,13 @@ def test_build_scraper_run_payload_contains_operational_fields() -> None:
         )
     )
 
-    assert payload["text"] == "Scraper run: DOU (success)"
-    fields = payload["blocks"][1]["fields"]
-    assert any("Status" in field["text"] and "Success" in field["text"] for field in fields)
-    assert any("Duration" in field["text"] and "12.4s" in field["text"] for field in fields)
-    assert any("Found" in field["text"] and "18" in field["text"] for field in fields)
-    assert any("New" in field["text"] and "4" in field["text"] for field in fields)
-    assert len(payload["blocks"]) == 2
+    assert payload["text"] == "✅ DOU · success"
+    body = payload["blocks"][0]["text"]["text"]
+    assert "12.4s" in body
+    assert "18 found" in body
+    assert "4 new" in body
+    assert "Skipped: 14" in body
+    assert len(payload["blocks"]) == 1
 
 
 def test_build_scraper_run_payload_includes_error_only_on_failure() -> None:
@@ -112,9 +114,10 @@ def test_build_scraper_run_payload_includes_error_only_on_failure() -> None:
         )
     )
 
-    assert payload["text"] == "Scraper run: LinkedIn (failed)"
+    assert payload["text"] == "⚠️ LinkedIn · failed"
     assert len(payload["blocks"]) == 3
-    assert payload["blocks"][2]["text"]["text"] == "*Error*\nnetwork timeout"
+    assert payload["blocks"][1]["elements"][0]["text"] == "Failed items: 1"
+    assert payload["blocks"][2]["text"]["text"] == "```network timeout```"
 
 
 def test_build_scraper_schedule_payload_contains_cadence_and_next_run() -> None:
@@ -133,8 +136,9 @@ def test_build_scraper_schedule_payload_contains_cadence_and_next_run() -> None:
         ]
     )
 
-    assert payload["text"] == "Scraper scheduler snapshot"
+    assert payload["text"] == "🕒 Scraper schedule"
     body = payload["blocks"][1]["text"]["text"]
+    assert "• *DOU*" in body
     assert "DOU" in body
     assert "Every 6 hours" in body
     assert "2026-03-24 09:30 UTC" in body
@@ -366,7 +370,7 @@ async def test_dispatch_job_to_slack_uses_compact_payload_for_jobs_inbox(monkeyp
 
     assert channels == ["#jobs-inbox"]
     assert posted[0][0] == "#jobs-inbox"
-    assert posted[0][1]["text"] == "Bolt - Senior QA Automation Engineer [P2|60]"
+    assert posted[0][1]["text"] == "🟡 Bolt — Senior QA Automation Engineer [P2|60]"
     assert len(posted[0][1]["blocks"]) == 1
 
 
@@ -399,7 +403,7 @@ async def test_post_jobs_inbox_snapshot_posts_to_jobs_inbox(monkeypatch) -> None
     assert summary.channel == "#jobs-inbox"
     assert summary.count_rows == 2
     assert posted[0][0] == "#jobs-inbox"
-    assert posted[0][1]["text"] == "Jobs inbox snapshot"
+    assert posted[0][1]["text"] == "📥 Jobs inbox · 2"
 
 
 @pytest.mark.asyncio
@@ -459,7 +463,7 @@ async def test_post_scraper_run_report_creates_channel_and_posts(monkeypatch) ->
     assert [name for name, _ in calls] == ["list", "create", "join", "post"]
     assert calls[1][1] == {"name": "scraper-runs", "is_private": False}
     assert calls[3][1]["channel"] == "C777"
-    assert calls[3][1]["payload"]["text"] == "Scraper run: DOU (success)"
+    assert calls[3][1]["payload"]["text"] == "✅ DOU · success"
 
 
 @pytest.mark.asyncio
@@ -507,4 +511,4 @@ async def test_post_scraper_schedule_snapshot_creates_channel_and_posts(monkeypa
     assert summary.count_jobs == 1
     assert [name for name, _ in calls] == ["list", "join", "post"]
     assert calls[0][1] == {"types": "public_channel"}
-    assert calls[2][1]["payload"]["text"] == "Scraper scheduler snapshot"
+    assert calls[2][1]["payload"]["text"] == "🕒 Scraper schedule"
