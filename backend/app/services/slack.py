@@ -248,21 +248,20 @@ def _plan_meta_context(
     timestamp: str,
     story_points: int | None = None,
 ) -> dict[str, object]:
-    elements: list[dict[str, str]] = [{"type": "mrkdwn", "text": f"`{timestamp}`"}]
+    elements: list[dict[str, str]] = [{"type": "mrkdwn", "text": f"🕐 {timestamp}"}]
     if story_points is not None:
-        elements.insert(0, {"type": "mrkdwn", "text": f"`{story_points} SP`"})
+        elements.insert(0, {"type": "mrkdwn", "text": f"◦ {story_points} SP"})
     return {"type": "context", "elements": elements}
 
 
-def _plan_task_section(
+def _plan_task_line(
     *,
     title: str,
-    message: str,
     link: str | None = None,
 ) -> dict[str, object]:
     section: dict[str, object] = {
         "type": "section",
-        "text": {"type": "mrkdwn", "text": f"*Task*  `{title}`\n{message}"},
+        "text": {"type": "mrkdwn", "text": f"*Task:*  `{title}`"},
     }
     if link:
         section["accessory"] = {
@@ -271,6 +270,13 @@ def _plan_task_section(
             "url": link,
         }
     return section
+
+
+def _plan_note_section(message: str) -> dict[str, object]:
+    return {
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": message},
+    }
 
 
 def _plan_header_block(text: str) -> dict[str, object]:
@@ -643,10 +649,7 @@ def build_plan_update_payload(
     if threaded:
         blocks: list[dict[str, object]] = [
             _plan_header_block(f"{emoji}  {status_heading}"),
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": message_text},
-            },
+            _plan_note_section(message_text),
             _plan_meta_context(timestamp=timestamp),
         ]
         if next_text:
@@ -663,7 +666,8 @@ def build_plan_update_payload(
 
     blocks = [
         _plan_header_block(f"{emoji}  {status_heading}"),
-        _plan_task_section(title=title_text, message=message_text, link=link_text),
+        _plan_task_line(title=title_text, link=link_text),
+        _plan_note_section(message_text),
         _plan_meta_context(
             timestamp=timestamp,
             story_points=story_points,

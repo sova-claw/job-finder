@@ -161,15 +161,14 @@ def test_build_plan_update_payload_is_short_and_structured() -> None:
     blocks = attachment["blocks"]
     assert blocks[0]["type"] == "header"
     assert blocks[0]["text"]["text"] == "🟢  Work started"
-    assert blocks[1]["text"]["text"] == (
-        "*Task*  `StartupIndex source`\nStartupIndex discovery source"
-    )
+    assert blocks[1]["text"]["text"] == "*Task:*  `StartupIndex source`"
     assert blocks[1]["accessory"]["text"]["text"] == "Open"
     assert blocks[1]["accessory"]["url"] == "https://startup-index.ch/en/the-startup-directory/"
-    meta = [item["text"] for item in blocks[2]["elements"]]
-    assert meta[0] == "`3 SP`"
-    assert meta[1].startswith("`")
-    next_meta = [item["text"] for item in blocks[3]["elements"]]
+    assert blocks[2]["text"]["text"] == "StartupIndex discovery source"
+    meta = [item["text"] for item in blocks[3]["elements"]]
+    assert meta[0] == "◦ 3 SP"
+    assert meta[1].startswith("🕐 ")
+    next_meta = [item["text"] for item in blocks[4]["elements"]]
     assert next_meta[0] == "➡️ Next: Choose the clean integration path"
 
 
@@ -188,7 +187,7 @@ def test_build_plan_update_payload_is_shorter_inside_thread() -> None:
     blocks = attachment["blocks"]
     assert blocks[0]["text"]["text"] == "✅  Task complete"
     assert blocks[1]["text"]["text"] == "Confirmed it has company pages and apply paths."
-    assert blocks[2]["elements"][0]["text"].startswith("`")
+    assert blocks[2]["elements"][0]["text"].startswith("🕐 ")
     assert blocks[3]["elements"][0]["text"] == "➡️ Next: Wire the importer."
 
 
