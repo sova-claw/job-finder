@@ -104,6 +104,30 @@ def test_build_scraper_run_payload_includes_error_only_on_failure() -> None:
     assert payload["blocks"][2]["text"]["text"] == "*Error*\nnetwork timeout"
 
 
+def test_build_scraper_schedule_payload_contains_cadence_and_next_run() -> None:
+    payload = slack.build_scraper_schedule_payload(
+        [
+            slack.ScraperScheduleEntry(
+                source="DOU",
+                cadence="Every 6 hours",
+                next_run_at=datetime(2026, 3, 24, 9, 30, tzinfo=UTC),
+            ),
+            slack.ScraperScheduleEntry(
+                source="LinkedIn",
+                cadence="Daily",
+                next_run_at=None,
+            ),
+        ]
+    )
+
+    assert payload["text"] == "Scraper scheduler snapshot"
+    body = payload["blocks"][1]["text"]["text"]
+    assert "DOU" in body
+    assert "Every 6 hours" in body
+    assert "2026-03-24 09:30 UTC" in body
+    assert "Not scheduled" in body
+
+
 def test_fit_signal_has_fallbacks_for_score_ranges() -> None:
     assert slack._fit_signal(_job(match_score=82)) == "OK strong"
     assert slack._fit_signal(_job(match_score=60)) == "! partial"
@@ -392,3 +416,51 @@ async def test_post_scraper_run_report_creates_channel_and_posts(monkeypatch) ->
     assert calls[1][1] == {"name": "scraper-runs", "is_private": False}
     assert calls[3][1]["channel"] == "C777"
     assert calls[3][1]["payload"]["text"] == "Scraper run: DOU (success)"
+
+
+@pytest.mark.asyncio
+async def test_post_scraper_schedule_snapshot_creates_channel_and_posts(monkeypatch) -> None:
+    monkeypatch.setattr(slack.settings, "slack_bot_token", "xoxb-test")
+    monkeypatch.setattr(slack.settings, "slack_scraper_report_channel", "#scraper-runs")
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class FakeClient:
+        async def conversations_list(
+            self,
+            *,
+            limit: int,
+            cursor: str | None,
+            exclude_archived: bool,
+            types: str,
+        ):
+            calls.append(("list", {"types": types}))
+            return {
+                "channels": [{"id": "C777", "name": "scraper-runs"}],
+                "response_metadata": {"next_cursor": ""},
+            }
+
+        async def conversations_join(self, *, channel: str):
+            calls.append(("join", {"channel": channel}))
+            return {"ok": True}
+
+        async def chat_postMessage(self, *, channel: str, **payload):
+            calls.append(("post", {"channel": channel, "payload": payload}))
+            return {"ok": True}
+
+    summary = await slack.post_scraper_schedule_snapshot(
+        [
+            slack.ScraperScheduleEntry(
+                source="DOU",
+                cadence="Every 6 hours",
+                next_run_at=datetime(2026, 3, 24, 9, 30, tzinfo=UTC),
+            )
+        ],
+        client=FakeClient(),  # type: ignore[arg-type]
+    )
+
+    assert summary.channel == "#scraper-runs"
+    assert summary.count_jobs == 1
+    assert [name for name, _ in calls] == ["list", "join", "post"]
+    assert calls[0][1] == {"types": "public_channel"}
+    assert calls[2][1]["payload"]["text"] == "Scraper scheduler snapshot"

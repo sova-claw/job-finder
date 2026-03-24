@@ -1,6 +1,9 @@
+from datetime import UTC, datetime
+
 import pytest
 
 from app.scraper import scheduler
+from app.services.slack import ScraperScheduleSummary
 
 
 class _FakeSessionContext:
@@ -68,3 +71,35 @@ async def test_run_scraper_job_posts_failure_summary(monkeypatch) -> None:
     assert reported[0].count_skipped == 0
     assert reported[0].count_failed == 0
     assert reported[0].duration_seconds >= 0
+
+
+@pytest.mark.asyncio
+async def test_post_schedule_snapshot_uses_scheduler_jobs(monkeypatch) -> None:
+    service = scheduler.SchedulerService()
+    captured: list[list[scheduler.ScraperScheduleEntry]] = []
+
+    class FakeJob:
+        def __init__(self, next_run_time):
+            self.next_run_time = next_run_time
+
+    next_run = datetime(2026, 3, 24, 9, 30, tzinfo=UTC)
+
+    monkeypatch.setattr(
+        service.scheduler,
+        "get_job",
+        lambda job_id: FakeJob(next_run) if job_id == "scrape-dou" else FakeJob(None),
+    )
+
+    async def fake_post(entries: list[scheduler.ScraperScheduleEntry]) -> ScraperScheduleSummary:
+        captured.append(entries)
+        return ScraperScheduleSummary(channel="#scraper-runs", count_jobs=len(entries))
+
+    monkeypatch.setattr(scheduler, "post_scraper_schedule_snapshot", fake_post)
+
+    summary = await service.post_schedule_snapshot()
+
+    assert summary is not None
+    assert summary.channel == "#scraper-runs"
+    assert summary.count_jobs == len(scheduler.SCRAPER_SCHEDULES)
+    assert captured[0][0].source == "DOU"
+    assert captured[0][0].next_run_at == next_run

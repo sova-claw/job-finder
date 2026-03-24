@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.database import get_session
 from app.routers import alerts as alerts_router_module
-from app.services.slack import SlackDispatchSummary, SlackInboxSummary
+from app.services.slack import ScraperScheduleSummary, SlackDispatchSummary, SlackInboxSummary
 from main import app
 
 
@@ -70,3 +70,42 @@ def test_send_slack_inbox_route_returns_summary(monkeypatch) -> None:
         assert payload["count_rows"] == 12
     finally:
         app.dependency_overrides.clear()
+
+
+def test_send_scraper_schedule_route_returns_summary(monkeypatch) -> None:
+    async def fake_post_schedule():
+        return ScraperScheduleSummary(
+            channel="#scraper-runs",
+            count_jobs=6,
+            posted_at=datetime.now(UTC),
+        )
+
+    monkeypatch.setattr(
+        alerts_router_module.scheduler_service,
+        "post_schedule_snapshot",
+        fake_post_schedule,
+    )
+
+    client = TestClient(app)
+    response = client.post("/api/alerts/slack/scraper-schedule")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "Scraper Scheduler"
+    assert payload["channel"] == "#scraper-runs"
+    assert payload["count_jobs"] == 6
+
+
+def test_send_scraper_schedule_route_handles_missing_config(monkeypatch) -> None:
+    async def fake_post_schedule():
+        raise RuntimeError("Slack is not configured")
+
+    monkeypatch.setattr(
+        alerts_router_module.scheduler_service,
+        "post_schedule_snapshot",
+        fake_post_schedule,
+    )
+
+    client = TestClient(app)
+    response = client.post("/api/alerts/slack/scraper-schedule")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Slack is not configured"

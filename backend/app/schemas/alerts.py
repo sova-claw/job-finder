@@ -16,3 +16,10 @@ class SlackInboxSnapshotResponse(BaseModel):
     channel: str
     count_rows: int
     posted_at: datetime
+
+
+class ScraperScheduleSnapshotResponse(BaseModel):
+    source: str = "Scraper Scheduler"
+    channel: str
+    count_jobs: int
+    posted_at: datetime

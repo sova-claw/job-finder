@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from time import perf_counter
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -18,12 +19,40 @@ from app.scraper.hn_jobs import scrape_hn_jobs
 from app.services.company_sync import sync_airtable_companies
 from app.services.slack import (
     ScraperRunSummary,
+    ScraperScheduleEntry,
+    ScraperScheduleSummary,
     dispatch_new_jobs_to_slack,
     post_scraper_run_report,
+    post_scraper_schedule_snapshot,
 )
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledScraper:
+    job_id: str
+    source: str
+    cadence: str
+
+
+SCRAPER_SCHEDULES = (
+    ScheduledScraper(
+        "scrape-dou",
+        "DOU",
+        f"Every {settings.dou_scrape_interval_hours} hours",
+    ),
+    ScheduledScraper(
+        "scrape-djinni",
+        "Djinni",
+        f"Every {settings.djinni_scrape_interval_hours} hours",
+    ),
+    ScheduledScraper("scrape-bigco", "BigCo", "Weekly"),
+    ScheduledScraper("scrape-careers-page", "CareersPage", "Weekly"),
+    ScheduledScraper("scrape-linkedin", "LinkedIn", "Daily"),
+    ScheduledScraper("scrape-hn", "HN", "Every 4 weeks"),
+)
 
 
 class SchedulerService:
@@ -71,6 +100,29 @@ class SchedulerService:
             logger.info("Scraper Slack reporting skipped because Slack is not configured")
         except Exception as exc:  # noqa: BLE001
             logger.exception("Scraper Slack reporting failed: %s", exc)
+
+    def _build_schedule_entries(self) -> list[ScraperScheduleEntry]:
+        entries: list[ScraperScheduleEntry] = []
+        for scraper in SCRAPER_SCHEDULES:
+            job = self.scheduler.get_job(scraper.job_id)
+            entries.append(
+                ScraperScheduleEntry(
+                    source=scraper.source,
+                    cadence=scraper.cadence,
+                    next_run_at=getattr(job, "next_run_time", None),
+                )
+            )
+        return entries
+
+    async def post_schedule_snapshot(self) -> ScraperScheduleSummary | None:
+        try:
+            return await post_scraper_schedule_snapshot(self._build_schedule_entries())
+        except RuntimeError:
+            logger.info("Scraper schedule Slack reporting skipped because Slack is not configured")
+            return None
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Scraper schedule Slack reporting failed: %s", exc)
+            return None
 
     async def run_dou_job(self) -> None:
         await self._run_scraper_job(source="DOU", scrape_fn=scrape_dou)

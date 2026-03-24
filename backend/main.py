@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -20,11 +21,16 @@ from app.routers import (
 from app.scraper.scheduler import scheduler_service
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     scheduler_service.start()
+    try:
+        await scheduler_service.post_schedule_snapshot()
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Failed to post scraper scheduler snapshot on startup: %s", exc)
     try:
         yield
     finally:

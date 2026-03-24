@@ -47,6 +47,20 @@ class ScraperRunSummary:
 
 
 @dataclass(slots=True)
+class ScraperScheduleEntry:
+    source: str
+    cadence: str
+    next_run_at: datetime | None
+
+
+@dataclass(slots=True)
+class ScraperScheduleSummary:
+    channel: str
+    count_jobs: int
+    posted_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(slots=True)
 class JobSlackChannelSummary:
     job_id: str
     channel_id: str
@@ -407,6 +421,51 @@ def build_scraper_run_payload(summary: ScraperRunSummary) -> dict[str, object]:
     }
 
 
+def _format_next_run(next_run_at: datetime | None) -> str:
+    if next_run_at is None:
+        return "Not scheduled"
+    normalized = next_run_at.astimezone(UTC)
+    return normalized.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def build_scraper_schedule_payload(entries: list[ScraperScheduleEntry]) -> dict[str, object]:
+    rows = [
+        "Source           Cadence            Next run (UTC)",
+        "---------------  -----------------  --------------------",
+    ]
+    for entry in entries:
+        rows.append(
+            "  ".join(
+                [
+                    _truncate(entry.source, 15),
+                    _truncate(entry.cadence, 17),
+                    _truncate(_format_next_run(entry.next_run_at), 20),
+                ]
+            )
+        )
+
+    table = "```" + "\n".join(rows) + "```"
+    return {
+        "text": "Scraper scheduler snapshot",
+        "blocks": [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "Scraper scheduler"},
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        "Current scraper cadence and next scheduled runs.\n"
+                        f"{table}"
+                    ),
+                },
+            },
+        ],
+    }
+
+
 def _fit_signal(job: Job) -> str:
     score = job.match_score
     if score is None:
@@ -705,3 +764,36 @@ async def post_scraper_run_report(
         **build_scraper_run_payload(summary),
     )
     return summary
+
+
+async def post_scraper_schedule_snapshot(
+    entries: list[ScraperScheduleEntry],
+    *,
+    client: AsyncWebClient | None = None,
+) -> ScraperScheduleSummary:
+    if not settings.slack_bot_token:
+        raise RuntimeError("SLACK_BOT_TOKEN is required to post scraper scheduler updates.")
+
+    channel_name = settings.slack_scraper_report_channel.strip()
+    if not channel_name:
+        raise RuntimeError(
+            "SLACK_SCRAPER_REPORT_CHANNEL must be set to post scraper scheduler updates."
+        )
+
+    slack_client = client or AsyncWebClient(token=settings.slack_bot_token)
+    cache: dict[str, str] = {}
+    channel_id = await _resolve_or_create_public_channel_id(
+        slack_client,
+        channel_name,
+        cache=cache,
+    )
+    try:
+        await slack_client.conversations_join(channel=channel_id)
+    except SlackApiError as exc:
+        if exc.response.get("error") not in {"already_in_channel", "is_archived"}:
+            raise
+    await slack_client.chat_postMessage(
+        channel=channel_id,
+        **build_scraper_schedule_payload(entries),
+    )
+    return ScraperScheduleSummary(channel=channel_name, count_jobs=len(entries))

@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
-from app.schemas.alerts import SlackDispatchResponse, SlackInboxSnapshotResponse
+from app.schemas.alerts import (
+    ScraperScheduleSnapshotResponse,
+    SlackDispatchResponse,
+    SlackInboxSnapshotResponse,
+)
+from app.scraper.scheduler import scheduler_service
 from app.services.slack import dispatch_new_jobs_to_slack, post_jobs_inbox_snapshot
 
 router = APIRouter(tags=["alerts"])
@@ -41,5 +46,28 @@ async def send_slack_inbox_snapshot(
     return SlackInboxSnapshotResponse(
         channel=summary.channel,
         count_rows=summary.count_rows,
+        posted_at=summary.posted_at,
+    )
+
+
+@router.post("/alerts/slack/scraper-schedule", response_model=ScraperScheduleSnapshotResponse)
+async def send_scraper_schedule_snapshot() -> ScraperScheduleSnapshotResponse:
+    try:
+        summary = await scheduler_service.post_schedule_snapshot()
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    if summary is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Scraper scheduler snapshot could not be posted",
+        )
+
+    return ScraperScheduleSnapshotResponse(
+        channel=summary.channel,
+        count_jobs=summary.count_jobs,
         posted_at=summary.posted_at,
     )
