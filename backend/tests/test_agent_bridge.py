@@ -54,6 +54,38 @@ def test_thread_session_store_round_trip(tmp_path: Path) -> None:
     assert loaded[1].content == "Do the scraper first."
 
 
+def test_extract_task_choices_from_message_parses_numbered_list(tmp_path: Path) -> None:
+    del tmp_path
+    choices = SlackAgentBridge._extract_task_choices_from_message(
+        {
+            "message": {
+                "attachments": [
+                    {
+                        "blocks": [
+                            {"type": "header", "text": {"type": "plain_text", "text": "Task list"}},
+                            {
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": (
+                                        "1. Djinni auth scrape · 3 SP\n"
+                                        "2. StartupIndex source · 3 SP"
+                                    ),
+                                },
+                            },
+                        ]
+                    }
+                ]
+            }
+        }
+    )
+
+    assert choices == [
+        {"title": "Djinni auth scrape", "story_points": 3},
+        {"title": "StartupIndex source", "story_points": 3},
+    ]
+
+
 def test_thread_session_store_upsert_updates_existing_message(tmp_path: Path) -> None:
     store = ThreadSessionStore(str(tmp_path / "sessions.json"))
     thread_key = build_thread_key("C123", "171.222")
@@ -677,7 +709,9 @@ async def test_handle_plan_pick_action_starts_selected_task(
     )
     bridge = SlackAgentBridge(settings)
     started = AsyncMock()
+    refreshed = AsyncMock()
     session = object()
+    client = object()
 
     class _FakeSessionContext:
         async def __aenter__(self):
@@ -692,6 +726,7 @@ async def test_handle_plan_pick_action_starts_selected_task(
         "start_plan_task_from_selection",
         started,
     )
+    monkeypatch.setattr(bridge, "_refresh_task_list_message", refreshed)
 
     await bridge._handle_plan_pick_action(
         {
@@ -701,8 +736,10 @@ async def test_handle_plan_pick_action_starts_selected_task(
                     "value": '{"title":"Jobs inbox cleanup","story_points":2}',
                 }
             ],
+            "channel": {"id": "C123"},
             "message": {"ts": "171.222"},
         },
+        client=client,
         logger=AsyncMock(),
     )
 
@@ -711,4 +748,18 @@ async def test_handle_plan_pick_action_starts_selected_task(
         title="Jobs inbox cleanup",
         story_points=2,
         default_thread_ts="171.222",
+    )
+    refreshed.assert_awaited_once_with(
+        client=client,
+        body={
+            "actions": [
+                {
+                    "action_id": "plan_pick_task_0",
+                    "value": '{"title":"Jobs inbox cleanup","story_points":2}',
+                }
+            ],
+            "channel": {"id": "C123"},
+            "message": {"ts": "171.222"},
+        },
+        selected_title="Jobs inbox cleanup",
     )

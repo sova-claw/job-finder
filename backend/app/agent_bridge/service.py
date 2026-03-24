@@ -51,6 +51,7 @@ from app.agent_bridge.slack_io import post_long_message
 from app.agent_bridge.specialist_memory import SpecialistMemoryStore
 from app.database import SessionLocal
 from app.services.plan_tasks import start_plan_task_from_selection
+from app.services.slack import build_plan_update_payload
 
 __all__ = [
     "SlackAgentBridge",
@@ -115,9 +116,9 @@ class SlackAgentBridge:
             await self._handle_event(body.get("event", {}), client=client, logger=logger)
 
         @self.app.action(re.compile(r"^plan_pick_task_\d+$"))
-        async def handle_plan_pick_action(ack, body: dict, logger) -> None:
+        async def handle_plan_pick_action(ack, body: dict, client: AsyncWebClient, logger) -> None:
             await ack()
-            await self._handle_plan_pick_action(body, logger=logger)
+            await self._handle_plan_pick_action(body, client=client, logger=logger)
 
     async def _handle_event(self, event: dict, *, client: AsyncWebClient, logger) -> None:
         normalized = normalize_event_payload(event)
@@ -745,7 +746,94 @@ class SlackAgentBridge:
     def _clean_text(text: str) -> str:
         return " ".join(part for part in text.split() if not part.startswith("<@"))
 
-    async def _handle_plan_pick_action(self, body: dict, *, logger) -> None:
+    @staticmethod
+    def _extract_task_choices_from_message(body: dict) -> list[dict[str, object]]:
+        message = body.get("message") or {}
+        attachments = message.get("attachments") or []
+        candidate_text = ""
+        for attachment in attachments:
+            for block in attachment.get("blocks") or []:
+                if block.get("type") != "section":
+                    continue
+                text = str((block.get("text") or {}).get("text", "")).strip()
+                if re.search(r"^\d+\.\s+", text, re.M):
+                    candidate_text = text
+                    break
+            if candidate_text:
+                break
+
+        choices: list[dict[str, object]] = []
+        for raw_line in candidate_text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            match = re.match(r"^\d+\.\s*(.*?)\s*(?:·\s*(\d+)\s*SP)?$", line)
+            if not match:
+                continue
+            title = " ".join(match.group(1).split()).strip()
+            if not title:
+                continue
+            story_points = int(match.group(2)) if match.group(2) else None
+            choices.append({"title": title, "story_points": story_points})
+        return choices
+
+    async def _refresh_task_list_message(
+        self,
+        *,
+        client: AsyncWebClient,
+        body: dict,
+        selected_title: str,
+    ) -> None:
+        choices = self._extract_task_choices_from_message(body)
+        remaining: list[dict[str, object]] = []
+        removed = False
+        for choice in choices:
+            choice_title = str(choice.get("title", "")).strip()
+            if not removed and choice_title.lower() == selected_title.lower():
+                removed = True
+                continue
+            remaining.append(choice)
+
+        if not remaining and not choices:
+            return
+
+        if remaining:
+            message = "\n".join(
+                f"{index}. {item['title']}" + (
+                    f" · {item['story_points']} SP"
+                    if item.get("story_points") is not None
+                    else ""
+                )
+                for index, item in enumerate(remaining, start=1)
+            )
+            next_step = "Pick one and start."
+        else:
+            message = "No open tasks right now."
+            next_step = "Add the next task."
+
+        payload = build_plan_update_payload(
+            status="info",
+            title="Task list",
+            message=message,
+            next_step=next_step,
+        )
+        channel_id = str((body.get("channel") or {}).get("id", "")).strip()
+        message_ts = str((body.get("message") or {}).get("ts", "")).strip()
+        if not channel_id or not message_ts:
+            return
+        await client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            **payload,
+        )
+
+    async def _handle_plan_pick_action(
+        self,
+        body: dict,
+        *,
+        client: AsyncWebClient,
+        logger,
+    ) -> None:
         action = (body.get("actions") or [{}])[0]
         value = str(action.get("value", "")).strip()
         if not value:
@@ -772,6 +860,11 @@ class SlackAgentBridge:
                 story_points=story_points,
                 default_thread_ts=message_ts,
             )
+        await self._refresh_task_list_message(
+            client=client,
+            body=body,
+            selected_title=title,
+        )
 
     async def run(self) -> None:
         if not self.settings.slack_bot_token or not self.settings.slack_app_token:
