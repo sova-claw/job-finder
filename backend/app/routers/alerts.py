@@ -10,7 +10,7 @@ from app.schemas.alerts import (
     SlackPlanUpdateResponse,
 )
 from app.scraper.scheduler import scheduler_service
-from app.services.plan_tasks import save_plan_task
+from app.services.plan_tasks import attach_plan_task_slack_post, save_plan_task
 from app.services.slack import (
     dispatch_new_jobs_to_slack,
     post_jobs_inbox_snapshot,
@@ -103,6 +103,13 @@ async def send_plan_update(
             next_step=payload.next_step,
             link=payload.link,
             task_id=task.id,
+            thread_ts=task.slack_thread_ts,
+        )
+        await attach_plan_task_slack_post(
+            session,
+            task_id=task.id,
+            thread_ts=summary.thread_ts or "",
+            post_ts=summary.post_ts or "",
         )
     except ValueError as exc:
         raise HTTPException(

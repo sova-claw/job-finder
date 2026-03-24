@@ -13,6 +13,8 @@ class PlanTaskResponse(APIModel):
     message: str | None = None
     link: str | None = None
     next_step: str | None = None
+    slack_thread_ts: str | None = None
+    slack_last_post_ts: str | None = None
     completed_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

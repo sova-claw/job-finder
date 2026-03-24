@@ -19,9 +19,16 @@ class _FakeSession:
 
 
 class _FakeTask:
-    def __init__(self, *, task_id: str, title: str) -> None:
+    def __init__(
+        self,
+        *,
+        task_id: str,
+        title: str,
+        slack_thread_ts: str | None = None,
+    ) -> None:
         self.id = task_id
         self.title = title
+        self.slack_thread_ts = slack_thread_ts
 
 
 async def _override_session() -> AsyncGenerator[_FakeSession, None]:
@@ -144,6 +151,18 @@ def test_send_plan_update_route_returns_summary(monkeypatch) -> None:
         assert next_step == "Choose the clean integration path"
         return _FakeTask(task_id="task-1", title=title)
 
+    async def fake_attach_plan_task_slack_post(
+        _session,
+        *,
+        task_id: str,
+        thread_ts: str,
+        post_ts: str,
+    ):
+        assert task_id == "task-1"
+        assert thread_ts == "111.222"
+        assert post_ts == "111.222"
+        return _FakeTask(task_id=task_id, title="StartupIndex source", slack_thread_ts=thread_ts)
+
     async def fake_post_plan_update(
         *,
         status: str,
@@ -153,6 +172,7 @@ def test_send_plan_update_route_returns_summary(monkeypatch) -> None:
         next_step: str | None = None,
         link: str | None = None,
         task_id: str | None = None,
+        thread_ts: str | None = None,
     ):
         assert status == "started"
         assert title == "StartupIndex source"
@@ -161,14 +181,22 @@ def test_send_plan_update_route_returns_summary(monkeypatch) -> None:
         assert next_step == "Choose the clean integration path"
         assert link == "https://startup-index.ch/en/the-startup-directory/"
         assert task_id == "task-1"
+        assert thread_ts is None
         return SlackPlanUpdateSummary(
             channel="#plans",
             status=status,
             task_id=task_id,
+            thread_ts="111.222",
+            post_ts="111.222",
             posted_at=datetime.now(UTC),
         )
 
     monkeypatch.setattr(alerts_router_module, "save_plan_task", fake_save_plan_task)
+    monkeypatch.setattr(
+        alerts_router_module,
+        "attach_plan_task_slack_post",
+        fake_attach_plan_task_slack_post,
+    )
     monkeypatch.setattr(alerts_router_module, "post_plan_update", fake_post_plan_update)
     app.dependency_overrides[get_session] = _override_session
     client = TestClient(app)
@@ -211,6 +239,16 @@ def test_send_plan_update_route_handles_missing_config(monkeypatch) -> None:
         del _session, title, status, story_points, message, link, next_step
         return _FakeTask(task_id="task-1", title="Slack format")
 
+    async def fake_attach_plan_task_slack_post(
+        _session,
+        *,
+        task_id: str,
+        thread_ts: str,
+        post_ts: str,
+    ):
+        del _session, task_id, thread_ts, post_ts
+        return _FakeTask(task_id="task-1", title="Slack format")
+
     async def fake_post_plan_update(
         *,
         status: str,
@@ -220,11 +258,17 @@ def test_send_plan_update_route_handles_missing_config(monkeypatch) -> None:
         next_step: str | None = None,
         link: str | None = None,
         task_id: str | None = None,
+        thread_ts: str | None = None,
     ):
-        del status, title, message, story_points, next_step, link, task_id
+        del status, title, message, story_points, next_step, link, task_id, thread_ts
         raise RuntimeError("Slack is not configured")
 
     monkeypatch.setattr(alerts_router_module, "save_plan_task", fake_save_plan_task)
+    monkeypatch.setattr(
+        alerts_router_module,
+        "attach_plan_task_slack_post",
+        fake_attach_plan_task_slack_post,
+    )
     monkeypatch.setattr(alerts_router_module, "post_plan_update", fake_post_plan_update)
     app.dependency_overrides[get_session] = _override_session
     client = TestClient(app)

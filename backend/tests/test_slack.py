@@ -155,12 +155,28 @@ def test_build_plan_update_payload_is_short_and_structured() -> None:
         next_step="Choose the clean integration path",
     )
 
-    assert payload["text"] == "🟡 StartupIndex source · Started"
+    assert payload["text"] == "🟡 StartupIndex source · Doing"
     body = payload["blocks"][0]["text"]["text"]
     assert "🟡 *StartupIndex source*  ·  `3 SP`" in body
     assert "StartupIndex discovery source" in body
     assert "🔗 *Link:* https://startup-index.ch/en/the-startup-directory/" in body
     assert "➡️ *Next:* Choose the clean integration path" in body
+
+
+def test_build_plan_update_payload_is_shorter_inside_thread() -> None:
+    payload = slack.build_plan_update_payload(
+        status="done",
+        title="StartupIndex source",
+        message="Confirmed it has company pages and apply paths.",
+        next_step="Wire the importer.",
+        threaded=True,
+    )
+
+    assert payload["text"] == "✅ Done: Confirmed it has company pages and apply paths."
+    body = payload["blocks"][0]["text"]["text"]
+    assert "✅ *Done:* Confirmed it has company pages and apply paths." in body
+    assert "*StartupIndex source*" not in body
+    assert "➡️ *Next:* Wire the importer." in body
 
 
 def test_fit_signal_has_fallbacks_for_score_ranges() -> None:
@@ -373,9 +389,12 @@ async def test_dispatch_job_to_slack_uses_compact_payload_for_jobs_inbox(monkeyp
         payload: dict[str, object],
         *,
         cache: dict[str, str],
-    ) -> None:
+        thread_ts: str | None = None,
+    ) -> dict[str, str]:
         del _client, cache
+        assert thread_ts is None
         posted.append((channel_name, payload))
+        return {"channel": "C123", "ts": "111.222"}
 
     monkeypatch.setattr(slack, "_post_to_channel", fake_post_to_channel)
 
@@ -409,9 +428,12 @@ async def test_post_jobs_inbox_snapshot_posts_to_jobs_inbox(monkeypatch) -> None
         payload: dict[str, object],
         *,
         cache: dict[str, str],
-    ):
+        thread_ts: str | None = None,
+    ) -> dict[str, str]:
         del _client, cache
+        assert thread_ts is None
         posted.append((channel_name, payload))
+        return {"channel": "C123", "ts": "111.222"}
 
     monkeypatch.setattr(slack, "list_inbox_jobs", fake_list_inbox_jobs)
     monkeypatch.setattr(slack, "_post_to_channel", fake_post_to_channel)
@@ -544,9 +566,12 @@ async def test_post_plan_update_posts_to_plans(monkeypatch) -> None:
         payload: dict[str, object],
         *,
         cache: dict[str, str],
-    ) -> None:
+        thread_ts: str | None = None,
+    ) -> dict[str, str]:
         del _client, cache
         posted.append((channel_name, payload))
+        assert thread_ts is None
+        return {"channel": "C123", "ts": "111.222"}
 
     monkeypatch.setattr(slack, "_post_to_channel", fake_post_to_channel)
 
@@ -564,5 +589,42 @@ async def test_post_plan_update_posts_to_plans(monkeypatch) -> None:
     assert summary.channel == "#plans"
     assert summary.status == "done"
     assert summary.task_id == "task-1"
+    assert summary.thread_ts == "111.222"
+    assert summary.post_ts == "111.222"
     assert posted[0][0] == "#plans"
     assert posted[0][1]["text"] == "✅ Slack format · Done"
+
+
+@pytest.mark.asyncio
+async def test_post_plan_update_uses_existing_thread(monkeypatch) -> None:
+    posted: list[tuple[str, dict[str, object], str | None]] = []
+
+    async def fake_post_to_channel(
+        _client,
+        channel_name: str,
+        payload: dict[str, object],
+        *,
+        cache: dict[str, str],
+        thread_ts: str | None = None,
+    ) -> dict[str, str]:
+        del _client, cache
+        posted.append((channel_name, payload, thread_ts))
+        return {"channel": "C123", "ts": "333.444"}
+
+    monkeypatch.setattr(slack, "_post_to_channel", fake_post_to_channel)
+
+    summary = await slack.post_plan_update(
+        status="progress",
+        title="StartupIndex source",
+        message="Found company pages. Checking role pages now.",
+        story_points=3,
+        task_id="task-1",
+        thread_ts="111.222",
+        client=object(),  # type: ignore[arg-type]
+    )
+
+    assert posted[0][0] == "#plans"
+    assert posted[0][2] == "111.222"
+    assert posted[0][1]["text"] == "🔄 Update: Found company pages. Checking role pages now."
+    assert summary.thread_ts == "111.222"
+    assert summary.post_ts == "333.444"

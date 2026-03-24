@@ -16,6 +16,8 @@ class PlanTask(Base):
     message: Mapped[str | None] = mapped_column(Text)
     link: Mapped[str | None] = mapped_column(Text)
     next_step: Mapped[str | None] = mapped_column(Text)
+    slack_thread_ts: Mapped[str | None] = mapped_column(Text)
+    slack_last_post_ts: Mapped[str | None] = mapped_column(Text)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

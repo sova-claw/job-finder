@@ -52,14 +52,35 @@ async def save_plan_task(
         session.add(task)
 
     task.status = normalized_status
-    task.story_points = story_points
+    if story_points is not None:
+        task.story_points = story_points
     task.message = message.strip() if message and message.strip() else None
-    task.link = link.strip() if link and link.strip() else None
-    task.next_step = next_step.strip() if next_step and next_step.strip() else None
+    if link is not None:
+        task.link = link.strip() if link and link.strip() else None
+    if next_step is not None:
+        task.next_step = next_step.strip() if next_step and next_step.strip() else None
     task.completed_at = (
         datetime.now(UTC) if normalized_status == "done" else None
     )
 
+    await session.commit()
+    await session.refresh(task)
+    return task
+
+
+async def attach_plan_task_slack_post(
+    session: AsyncSession,
+    *,
+    task_id: str,
+    thread_ts: str,
+    post_ts: str,
+) -> PlanTask:
+    task = await session.get(PlanTask, task_id)
+    if task is None:
+        raise LookupError("Plan task not found")
+
+    task.slack_thread_ts = thread_ts
+    task.slack_last_post_ts = post_ts
     await session.commit()
     await session.refresh(task)
     return task

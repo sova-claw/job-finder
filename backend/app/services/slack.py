@@ -65,6 +65,8 @@ class SlackPlanUpdateSummary:
     channel: str
     status: str
     task_id: str | None = None
+    thread_ts: str | None = None
+    post_ts: str | None = None
     posted_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -189,6 +191,20 @@ def _plan_status_emoji(status: str) -> str:
         "info": "🔔",
     }
     return mapping.get(normalized, "🔔")
+
+
+def _plan_status_label(status: str) -> str:
+    normalized = status.strip().lower()
+    mapping = {
+        "started": "Doing",
+        "doing": "Doing",
+        "progress": "Update",
+        "done": "Done",
+        "next": "Next",
+        "blocked": "Blocked",
+        "info": "Note",
+    }
+    return mapping.get(normalized, "Update")
 
 
 def _slugify_channel_part(value: str | None, *, fallback: str) -> str:
@@ -529,20 +545,28 @@ def build_plan_update_payload(
     story_points: int | None = None,
     next_step: str | None = None,
     link: str | None = None,
+    threaded: bool = False,
 ) -> dict[str, object]:
     emoji = _plan_status_emoji(status)
-    status_label = status.strip().capitalize() or "Update"
-    header = f"{emoji} *{title.strip()}*"
-    if story_points:
-        header += f"  ·  `{story_points} SP`"
-    lines = [header, message.strip()]
+    status_label = _plan_status_label(status)
+    if threaded:
+        lines = [f"{emoji} *{status_label}:* {message.strip()}"]
+    else:
+        header = f"{emoji} *{title.strip()}*"
+        if story_points:
+            header += f"  ·  `{story_points} SP`"
+        lines = [header, message.strip()]
     if link and link.strip():
         lines.append(f"🔗 *Link:* {link.strip()}")
     if next_step and next_step.strip():
         lines.append(f"➡️ *Next:* {next_step.strip()}")
     text = "\n".join(lines)
     return {
-        "text": f"{emoji} {title.strip()} · {status_label}",
+        "text": (
+            f"{emoji} {status_label}: {message.strip()}"
+            if threaded
+            else f"{emoji} {title.strip()} · {status_label}"
+        ),
         "blocks": [
             {
                 "type": "section",
@@ -651,7 +675,8 @@ async def _post_to_channel(
     payload: dict[str, object],
     *,
     cache: dict[str, str],
-) -> None:
+    thread_ts: str | None = None,
+) -> dict[str, str]:
     channel_id = await _resolve_channel_id(client, channel_name, cache=cache)
     try:
         await client.conversations_join(channel=channel_id)
@@ -664,7 +689,8 @@ async def _post_to_channel(
         }
         if error not in allowed_errors:
             raise
-    await client.chat_postMessage(channel=channel_id, **payload)
+    response = await client.chat_postMessage(channel=channel_id, thread_ts=thread_ts, **payload)
+    return {"channel": str(response["channel"]), "ts": str(response["ts"])}
 
 
 async def ensure_job_slack_channel(
@@ -898,13 +924,14 @@ async def post_plan_update(
     next_step: str | None = None,
     link: str | None = None,
     task_id: str | None = None,
+    thread_ts: str | None = None,
     client: AsyncWebClient | None = None,
 ) -> SlackPlanUpdateSummary:
     if not settings.slack_bot_token:
         raise RuntimeError("SLACK_BOT_TOKEN is required to post plan updates.")
 
     slack_client = client or AsyncWebClient(token=settings.slack_bot_token)
-    await _post_to_channel(
+    response = await _post_to_channel(
         slack_client,
         "#plans",
         build_plan_update_payload(
@@ -914,7 +941,16 @@ async def post_plan_update(
             story_points=story_points,
             next_step=next_step,
             link=link,
+            threaded=thread_ts is not None,
         ),
         cache={},
+        thread_ts=thread_ts,
     )
-    return SlackPlanUpdateSummary(channel="#plans", status=status, task_id=task_id)
+    resolved_thread_ts = thread_ts or response["ts"]
+    return SlackPlanUpdateSummary(
+        channel="#plans",
+        status=status,
+        task_id=task_id,
+        thread_ts=resolved_thread_ts,
+        post_ts=response["ts"],
+    )
