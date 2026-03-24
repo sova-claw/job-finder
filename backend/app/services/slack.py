@@ -231,38 +231,24 @@ def _attachment(
 
 def _plan_meta_context(
     *,
-    status_label: str,
+    timestamp: str,
     story_points: int | None = None,
 ) -> dict[str, object]:
-    elements: list[dict[str, str]] = [
-        {"type": "mrkdwn", "text": f"`{status_label}`"},
-    ]
+    elements: list[dict[str, str]] = [{"type": "mrkdwn", "text": f"`{timestamp}`"}]
     if story_points is not None:
-        elements.append({"type": "mrkdwn", "text": f"`{story_points} SP`"})
+        elements.insert(0, {"type": "mrkdwn", "text": f"`{story_points} SP`"})
     return {"type": "context", "elements": elements}
 
 
-def _plan_footer_context(*, label: str, timestamp: str) -> dict[str, object]:
-    return {
-        "type": "context",
-        "elements": [{"type": "mrkdwn", "text": f"{label} · `{timestamp}`"}],
-    }
-
-
-def _plan_body_section(
+def _plan_task_section(
     *,
-    text: str,
+    title: str,
+    message: str,
+    link: str | None = None,
 ) -> dict[str, object]:
-    return {
-        "type": "section",
-        "text": {"type": "mrkdwn", "text": text},
-    }
-
-
-def _plan_heading_section(*, title: str, link: str | None = None) -> dict[str, object]:
     section: dict[str, object] = {
         "type": "section",
-        "text": {"type": "mrkdwn", "text": f"*{title}*"},
+        "text": {"type": "mrkdwn", "text": f"*Task*  `{title}`\n{message}"},
     }
     if link:
         section["accessory"] = {
@@ -632,21 +618,19 @@ def build_plan_update_payload(
     if threaded:
         blocks: list[dict[str, object]] = [
             _plan_header_block(f"{emoji} {status_label}"),
-            _plan_body_section(text=message_text),
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": message_text},
+            },
+            _plan_meta_context(timestamp=timestamp),
         ]
         if next_text:
             blocks.append(
                 {
-                    "type": "divider",
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": f"➡️ Next: {next_text}"}],
                 }
             )
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"*Next*\n{next_text}"},
-                }
-            )
-        blocks.append(_plan_footer_context(label=f"Planner · {status_label}", timestamp=timestamp))
         return {
             "text": f"{emoji} {status_label}: {message_text}",
             "attachments": _attachment(color=color, blocks=blocks),
@@ -654,26 +638,19 @@ def build_plan_update_payload(
 
     blocks = [
         _plan_header_block(f"{emoji} {status_label}"),
-        _plan_heading_section(title=title_text, link=link_text),
+        _plan_task_section(title=title_text, message=message_text, link=link_text),
         _plan_meta_context(
-            status_label=status_label,
+            timestamp=timestamp,
             story_points=story_points,
         ),
-        _plan_body_section(text=message_text),
     ]
     if next_text:
         blocks.append(
             {
-                "type": "divider",
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"➡️ Next: {next_text}"}],
             }
         )
-        blocks.append(
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": f"*Next*\n{next_text}"},
-            }
-        )
-    blocks.append(_plan_footer_context(label="Planner", timestamp=timestamp))
 
     return {
         "text": f"{emoji} {title_text} · {status_label}",
