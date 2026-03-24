@@ -259,10 +259,13 @@ def _plan_task_section(
     return section
 
 
-def _plan_header_block(text: str) -> dict[str, object]:
+def _plan_status_section(*, emoji: str, label: str, message: str) -> dict[str, object]:
+    text = f"{emoji} *{label}*"
+    if message:
+        text += f"\n{message}"
     return {
-        "type": "header",
-        "text": {"type": "plain_text", "text": text, "emoji": True},
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": text},
     }
 
 
@@ -617,11 +620,7 @@ def build_plan_update_payload(
 
     if threaded:
         blocks: list[dict[str, object]] = [
-            _plan_header_block(f"{emoji} {status_label}"),
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": message_text},
-            },
+            _plan_status_section(emoji=emoji, label=status_label, message=message_text),
             _plan_meta_context(timestamp=timestamp),
         ]
         if next_text:
@@ -637,7 +636,7 @@ def build_plan_update_payload(
         }
 
     blocks = [
-        _plan_header_block(f"{emoji} {status_label}"),
+        _plan_status_section(emoji=emoji, label=status_label, message=""),
         _plan_task_section(title=title_text, message=message_text, link=link_text),
         _plan_meta_context(
             timestamp=timestamp,

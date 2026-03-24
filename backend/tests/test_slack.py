@@ -159,8 +159,8 @@ def test_build_plan_update_payload_is_short_and_structured() -> None:
     attachment = payload["attachments"][0]
     assert attachment["color"] == "#1D9E75"
     blocks = attachment["blocks"]
-    assert blocks[0]["type"] == "header"
-    assert blocks[0]["text"]["text"] == "🟡 Doing"
+    assert blocks[0]["type"] == "section"
+    assert blocks[0]["text"]["text"] == "🟡 *Doing*"
     assert blocks[1]["text"]["text"] == (
         "*Task*  `StartupIndex source`\nStartupIndex discovery source"
     )
@@ -186,10 +186,9 @@ def test_build_plan_update_payload_is_shorter_inside_thread() -> None:
     attachment = payload["attachments"][0]
     assert attachment["color"] == "#1D9E75"
     blocks = attachment["blocks"]
-    assert blocks[0]["text"]["text"] == "✅ Done"
-    assert blocks[1]["text"]["text"] == "Confirmed it has company pages and apply paths."
-    assert blocks[2]["elements"][0]["text"].startswith("`")
-    assert blocks[3]["elements"][0]["text"] == "➡️ Next: Wire the importer."
+    assert blocks[0]["text"]["text"] == "✅ *Done*\nConfirmed it has company pages and apply paths."
+    assert blocks[1]["elements"][0]["text"].startswith("`")
+    assert blocks[2]["elements"][0]["text"] == "➡️ Next: Wire the importer."
 
 
 def test_fit_signal_has_fallbacks_for_score_ranges() -> None:
