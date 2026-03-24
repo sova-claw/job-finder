@@ -241,11 +241,22 @@ def _plan_meta_context(
 def _plan_body_section(
     *,
     text: str,
+) -> dict[str, object]:
+    return {
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": text},
+    }
+
+
+def _plan_heading_section(
+    *,
+    title: str,
+    timestamp: str,
     link: str | None = None,
 ) -> dict[str, object]:
     section: dict[str, object] = {
         "type": "section",
-        "text": {"type": "mrkdwn", "text": text},
+        "text": {"type": "mrkdwn", "text": f"*{title}*"},
     }
     if link:
         section["accessory"] = {
@@ -254,16 +265,6 @@ def _plan_body_section(
             "url": link,
         }
     return section
-
-
-def _plan_heading_section(*, title: str, timestamp: str) -> dict[str, object]:
-    return {
-        "type": "section",
-        "fields": [
-            {"type": "mrkdwn", "text": f"*{title}*"},
-            {"type": "mrkdwn", "text": f"`{timestamp}`"},
-        ],
-    }
 
 
 def _slugify_channel_part(value: str | None, *, fallback: str) -> str:
@@ -617,8 +618,16 @@ def build_plan_update_payload(
 
     if threaded:
         blocks: list[dict[str, object]] = [
-            _plan_heading_section(title=f"{emoji} {status_label}", timestamp=timestamp),
-            _plan_body_section(text=message_text, link=link_text),
+            _plan_heading_section(
+                title=f"{emoji} {status_label}",
+                timestamp=timestamp,
+                link=link_text,
+            ),
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"`{timestamp}`"}],
+            },
+            _plan_body_section(text=message_text),
         ]
         if next_text:
             blocks.append(
@@ -639,9 +648,17 @@ def build_plan_update_payload(
 
     blocks = [
         {
-            **_plan_heading_section(title=f"{emoji} {title_text}", timestamp=timestamp),
+            **_plan_heading_section(
+                title=f"{emoji} {title_text}",
+                timestamp=timestamp,
+                link=link_text,
+            ),
         },
-        _plan_body_section(text=message_text, link=link_text),
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": f"`{timestamp}`"}],
+        },
+        _plan_body_section(text=message_text),
         _plan_meta_context(
             status_label=status_label,
             story_points=story_points,
