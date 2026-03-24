@@ -239,8 +239,12 @@ def _attachment(
     *,
     color: str,
     blocks: list[dict[str, object]],
+    fallback: str | None = None,
 ) -> list[dict[str, object]]:
-    return [{"color": color, "blocks": blocks}]
+    attachment: dict[str, object] = {"color": color, "blocks": blocks}
+    if fallback:
+        attachment["fallback"] = fallback
+    return [attachment]
 
 
 def _plan_meta_context(
@@ -660,8 +664,11 @@ def build_plan_update_payload(
                 }
             )
         return {
-            "text": f"{emoji} {title_text}",
-            "attachments": _attachment(color=color, blocks=blocks),
+            "attachments": _attachment(
+                color=color,
+                blocks=blocks,
+                fallback=f"{emoji} {title_text}",
+            ),
         }
 
     if threaded:
@@ -678,8 +685,11 @@ def build_plan_update_payload(
                 }
             )
         return {
-            "text": f"{emoji} {status_label}: {message_text}",
-            "attachments": _attachment(color=color, blocks=blocks),
+            "attachments": _attachment(
+                color=color,
+                blocks=blocks,
+                fallback=f"{emoji} {status_label}: {message_text}",
+            ),
         }
 
     blocks = [
@@ -700,8 +710,11 @@ def build_plan_update_payload(
         )
 
     return {
-        "text": f"{emoji} {title_text} · {status_label}",
-        "attachments": _attachment(color=color, blocks=blocks),
+        "attachments": _attachment(
+            color=color,
+            blocks=blocks,
+            fallback=f"{emoji} {title_text} · {status_label}",
+        ),
     }
 
 

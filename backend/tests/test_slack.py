@@ -155,9 +155,9 @@ def test_build_plan_update_payload_is_short_and_structured() -> None:
         next_step="Choose the clean integration path",
     )
 
-    assert payload["text"] == "🟢 StartupIndex source · Doing"
     attachment = payload["attachments"][0]
     assert attachment["color"] == "#1D9E75"
+    assert attachment["fallback"] == "🟢 StartupIndex source · Doing"
     blocks = attachment["blocks"]
     assert blocks[0]["type"] == "header"
     assert blocks[0]["text"]["text"] == "🟢  Work started"
@@ -181,9 +181,9 @@ def test_build_plan_update_payload_is_shorter_inside_thread() -> None:
         threaded=True,
     )
 
-    assert payload["text"] == "✅ Done: Confirmed it has company pages and apply paths."
     attachment = payload["attachments"][0]
     assert attachment["color"] == "#1D9E75"
+    assert attachment["fallback"] == "✅ Done: Confirmed it has company pages and apply paths."
     blocks = attachment["blocks"]
     assert blocks[0]["text"]["text"] == "✅  Task complete"
     assert blocks[1]["text"]["text"] == "Confirmed it has company pages and apply paths."
@@ -199,8 +199,8 @@ def test_build_plan_update_payload_info_card_is_simple() -> None:
         next_step="Pick one and start.",
     )
 
-    assert payload["text"] == "🔔 Task list"
     attachment = payload["attachments"][0]
+    assert attachment["fallback"] == "🔔 Task list"
     blocks = attachment["blocks"]
     assert blocks[0]["text"]["text"] == "🔔  Task list"
     assert blocks[1]["text"]["text"] == "1. Djinni auth scrape\n2. StartupIndex source"
@@ -621,7 +621,7 @@ async def test_post_plan_update_posts_to_plans(monkeypatch) -> None:
     assert summary.thread_ts == "111.222"
     assert summary.post_ts == "111.222"
     assert posted[0][0] == "#plans"
-    assert posted[0][1]["text"] == "✅ Slack format · Done"
+    assert posted[0][1]["attachments"][0]["fallback"] == "✅ Slack format · Done"
 
 
 @pytest.mark.asyncio
@@ -654,6 +654,9 @@ async def test_post_plan_update_uses_existing_thread(monkeypatch) -> None:
 
     assert posted[0][0] == "#plans"
     assert posted[0][2] == "111.222"
-    assert posted[0][1]["text"] == "🔵 Update: Found company pages. Checking role pages now."
+    assert (
+        posted[0][1]["attachments"][0]["fallback"]
+        == "🔵 Update: Found company pages. Checking role pages now."
+    )
     assert summary.thread_ts == "111.222"
     assert summary.post_ts == "333.444"
