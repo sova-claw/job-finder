@@ -225,6 +225,21 @@ def _attachment(*, color: str, blocks: list[dict[str, object]]) -> list[dict[str
     return [{"color": color, "blocks": blocks}]
 
 
+def _plan_meta_fields(
+    *,
+    status_label: str,
+    timestamp: str,
+    story_points: int | None = None,
+) -> dict[str, object]:
+    fields: list[dict[str, str]] = [
+        {"type": "mrkdwn", "text": f"*State*\n{status_label}"},
+        {"type": "mrkdwn", "text": f"*Time*\n{timestamp}"},
+    ]
+    if story_points is not None:
+        fields.insert(1, {"type": "mrkdwn", "text": f"*Size*\n{story_points} SP"})
+    return {"type": "section", "fields": fields}
+
+
 def _slugify_channel_part(value: str | None, *, fallback: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
     return normalized or fallback
@@ -587,18 +602,18 @@ def build_plan_update_payload(
                     "text": message_text,
                 },
             },
-            {
-                "type": "context",
-                "elements": [
-                    {"type": "mrkdwn", "text": f"{status_label} · {timestamp}"},
-                ],
-            },
+            _plan_meta_fields(status_label=status_label, timestamp=timestamp),
         ]
         if next_text:
             blocks.append(
                 {
+                    "type": "divider",
+                }
+            )
+            blocks.append(
+                {
                     "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"➡️ *Next:* {next_text}"},
+                    "text": {"type": "mrkdwn", "text": f"*Next*\n{next_text}"},
                 }
             )
         if link_text:
@@ -619,29 +634,31 @@ def build_plan_update_payload(
             "attachments": _attachment(color=color, blocks=blocks),
         }
 
-    context_parts = [f"{status_label} · {timestamp}"]
-    if story_points:
-        context_parts.insert(0, f"`{story_points} SP`")
-
     blocks = [
         {
             "type": "header",
             "text": {"type": "plain_text", "text": f"{emoji} {title_text}"},
         },
         {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": message_text},
-        },
-        {
-            "type": "context",
-            "elements": [{"type": "mrkdwn", "text": "  ·  ".join(context_parts)}],
-        },
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": message_text},
+            },
+        _plan_meta_fields(
+            status_label=status_label,
+            timestamp=timestamp,
+            story_points=story_points,
+        ),
     ]
     if next_text:
         blocks.append(
             {
+                "type": "divider",
+            }
+        )
+        blocks.append(
+            {
                 "type": "section",
-                "text": {"type": "mrkdwn", "text": f"➡️ *Next:* {next_text}"},
+                "text": {"type": "mrkdwn", "text": f"*Next*\n{next_text}"},
             }
         )
     if link_text:

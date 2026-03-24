@@ -162,13 +162,15 @@ def test_build_plan_update_payload_is_short_and_structured() -> None:
     assert blocks[0]["type"] == "header"
     assert blocks[0]["text"]["text"] == "🟡 StartupIndex source"
     assert blocks[1]["text"]["text"] == "StartupIndex discovery source"
-    context_text = blocks[2]["elements"][0]["text"]
-    assert "`3 SP`" in context_text
-    assert "Doing" in context_text
-    assert blocks[3]["text"]["text"] == "➡️ *Next:* Choose the clean integration path"
-    assert blocks[4]["elements"][0]["text"]["text"] == "Open link"
+    fields = blocks[2]["fields"]
+    assert fields[0]["text"] == "*State*\nDoing"
+    assert fields[1]["text"] == "*Size*\n3 SP"
+    assert fields[2]["text"].startswith("*Time*\n")
+    assert blocks[3]["type"] == "divider"
+    assert blocks[4]["text"]["text"] == "*Next*\nChoose the clean integration path"
+    assert blocks[5]["elements"][0]["text"]["text"] == "Open link"
     assert (
-        blocks[4]["elements"][0]["url"]
+        blocks[5]["elements"][0]["url"]
         == "https://startup-index.ch/en/the-startup-directory/"
     )
 
@@ -188,8 +190,11 @@ def test_build_plan_update_payload_is_shorter_inside_thread() -> None:
     blocks = attachment["blocks"]
     assert blocks[0]["text"]["text"] == "✅ Done"
     assert blocks[1]["text"]["text"] == "Confirmed it has company pages and apply paths."
-    assert blocks[2]["elements"][0]["text"].startswith("Done · ")
-    assert blocks[3]["text"]["text"] == "➡️ *Next:* Wire the importer."
+    fields = blocks[2]["fields"]
+    assert fields[0]["text"] == "*State*\nDone"
+    assert fields[1]["text"].startswith("*Time*\n")
+    assert blocks[3]["type"] == "divider"
+    assert blocks[4]["text"]["text"] == "*Next*\nWire the importer."
 
 
 def test_fit_signal_has_fallbacks_for_score_ranges() -> None:
