@@ -5,10 +5,8 @@ This bridge lets Slack act as the operating surface for a small agent team.
 Supported modes:
 - `orchestrator`
   - one local bridge runs planner and executor together
-- `codex-follower`
-  - native Claude speaks in Slack and the bridge only runs Codex
 - `local-roles`
-  - the local bridge owns `@Claude`, `@Codex`, and optional specialists like `@Llama`
+  - the local bridge owns the planner, `@Codex`, and optional specialists like `@Llama`
 
 For the most stable setup, use `local-roles` with dedicated Slack bots.
 
@@ -16,9 +14,9 @@ For the most stable setup, use `local-roles` with dedicated Slack bots.
 
 Slack is only the UI. The agent state lives in the repo.
 
-### Claude planner
-- `agents/claude/CONTEXT.md`
-  - stable planner role and operating rules
+### Planner
+- `agents/planner/CONTEXT.md`
+  - stable planning role and operating rules
 
 ### Codex executor
 - `agents/codex/CONTEXT.md`
@@ -62,11 +60,11 @@ This keeps the thread aligned around one explicit goal at a time.
 
 ## Active Planning / Development
 
-With dedicated `Claude` and `Codex` bots, one thread can run a bounded active loop:
-- Claude sets the goal and next task
+With dedicated planner and `Codex` bots, one thread can run a bounded active loop:
+- planner sets the goal and next task
 - Codex executes one bounded step
-- Codex hands the thread back to Claude
-- Claude can refine the next step
+- Codex hands the thread back to the planner
+- planner can refine the next step
 
 This loop is limited by:
 - `AUTO_THREAD_MAX_CYCLES`
@@ -94,13 +92,13 @@ Set it to `0` to disable auto-summarization.
 Dedicated role bots can now ask each other questions in-thread.
 
 Examples:
-- `@Codex` can ask `@Claude` to clarify the goal or next task
-- `@Llama` can hand a compressed summary back to `@Claude`
-- `@Claude` can hand execution to `@Codex`
+- `@Codex` can ask the planner to clarify the goal or next task
+- `@Llama` can hand a compressed summary back to the planner
+- the planner can hand execution to `@Codex`
 
 The bridge now accepts known bot-authored messages from the other agent bots instead of dropping them.
 For the most reliable baton pass, the executor and specialist bridges can use
-`PLANNER_POST_TOKEN` to post the next planner reply directly as the Claude bot.
+`PLANNER_POST_TOKEN` to post the next planner reply directly as the planner bot.
 For Codex-to-Llama delegation, the executor bridge can use `SPECIALIST_POST_TOKEN`
 to post a specialist reply directly as the Llama bot.
 
@@ -115,10 +113,10 @@ Codex can switch into a technical-planner mode when the thread is asking for:
 
 In that mode, Codex stays technical and can:
 - shape a bounded technical plan
-- ask Claude for product or priority clarification
+- ask the planner for product or priority clarification
 - delegate summarize / critique / extraction work to Llama
 
-Claude remains the primary planner for product direction and priority.
+The planner remains the primary role for product direction and priority.
 
 ## Dual-Bot / Multi-Bot Mode
 
@@ -128,7 +126,7 @@ Run one bridge process per bot and share:
 
 Use:
 - `BRIDGE_MODE=local-roles`
-- `BRIDGE_ROLE=planner` for the `Claude` bot
+- `BRIDGE_ROLE=planner` for the planner bot
 - `BRIDGE_ROLE=executor` for the `Codex` bot
 - `BRIDGE_ROLE=specialist` for the `Llama` bot
 
@@ -136,7 +134,7 @@ Example launch:
 
 ```bash
 cd backend
-PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.claude
+PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.planner
 PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.codex
 PYTHONPATH=. uv run python scripts/slack_agent_bridge.py --env-file .env.llama
 ```
@@ -148,7 +146,7 @@ SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
 BRIDGE_MODE=local-roles
 BRIDGE_ROLE=both
-PLANNER_TRIGGER_PHRASE=@Claude
+PLANNER_TRIGGER_PHRASE=planner:
 CODEX_TRIGGER_PHRASE=@Codex
 SPECIALIST_TRIGGER_PHRASE=@Llama
 PLANNER_COMMAND=claude -p --permission-mode bypassPermissions --model sonnet
@@ -166,7 +164,7 @@ Optional explicit paths:
 
 ```env
 BRIDGE_WORKDIR=/Users/sova/Desktop/Projects/job_finder
-PLANNER_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/agents/claude/CONTEXT.md
+PLANNER_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/agents/planner/CONTEXT.md
 EXECUTOR_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/agents/codex/CONTEXT.md
 SPECIALIST_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/agents/llama/CONTEXT.md
 SPECIALIST_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/agents/llama/MEMORY.md
@@ -185,7 +183,7 @@ MAX_HISTORY_MESSAGES=16
 ```
 
 The overnight/work-cycle runner now:
-- posts planner turns with the real Claude bot token when `PLANNER_POST_TOKEN` is set
+- posts planner turns with the real planner bot token when `PLANNER_POST_TOKEN` is set
 - posts executor turns with the real Codex bot token
 - posts a compact cycle summary line after executor output
 - stops with a visible timeout reason if planner or executor runs too long
@@ -203,7 +201,7 @@ PYTHONPATH=. uv run python scripts/slack_agent_bridge.py
 Start a thread with:
 
 ```text
-@Claude set the goal and next task.
+planner: set the goal and next task.
 ```
 
 Then continue with:

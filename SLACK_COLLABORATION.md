@@ -1,12 +1,14 @@
 # Slack Collaboration Protocol
 
-Recommended channel:
-- `#agent-room`
+Recommended channels:
+- `#plans`
+- `#jobs-inbox`
+- `#scraper-runs`
 
 ## Role Model
 
-- `@Claude`
-  - local planner role handled by the bridge
+- `Planner`
+  - local planning role handled by the bridge via `#plans`
 - `@Codex`
   - local executor role handled by the bridge
 - `Nazar`
@@ -18,7 +20,7 @@ The bridge owns the planner context and reuses it on every call.
 ## Where Context Lives
 
 Tracked in repo:
-- `agents/claude/CONTEXT.md`
+- `agents/planner/CONTEXT.md`
 - `agents/codex/CONTEXT.md`
 - `agents/llama/CONTEXT.md`
 - `agents/llama/MEMORY.md`
@@ -34,17 +36,13 @@ Live repo context:
 ## Thread Model
 
 - one task = one Slack thread
-- start with `@Claude`
+- start with a planning note in `#plans`
 - move to `@Codex` for implementation
 - keep follow-ups in the same thread
 
 ## Example
 
-```text
-@Claude plan the next step for careers-page scraping.
-```
-
-Planner reply appears in-thread as `Claude planner`.
+Planner reply appears in-thread as `Planner`.
 
 Then:
 
@@ -52,7 +50,7 @@ Then:
 @Codex execute that plan.
 ```
 
-Executor reply appears in-thread as `Codex executor`.
+Executor reply appears in-thread as `Codex`.
 
 ## Why This Works Better
 
@@ -60,4 +58,4 @@ Executor reply appears in-thread as `Codex executor`.
 - every planner call gets the same stable planner context
 - thread transcript adds task-local context
 - repo state adds current implementation context
-- keeping Claude stateless reduces stale carry-over between threads
+- keeping the planner stateless reduces stale carry-over between threads
