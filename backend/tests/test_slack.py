@@ -163,13 +163,13 @@ def test_build_plan_update_payload_is_short_and_structured() -> None:
     assert blocks[0]["text"]["text"] == "*🟡 StartupIndex source*"
     assert blocks[0]["accessory"]["text"]["text"] == "Open"
     assert blocks[0]["accessory"]["url"] == "https://startup-index.ch/en/the-startup-directory/"
-    assert blocks[1]["elements"][0]["text"].startswith("`")
-    assert blocks[2]["text"]["text"] == "StartupIndex discovery source"
-    meta = [item["text"] for item in blocks[3]["elements"]]
+    assert blocks[1]["text"]["text"] == "StartupIndex discovery source"
+    meta = [item["text"] for item in blocks[2]["elements"]]
     assert meta[0] == "`Doing`"
     assert meta[1] == "`3 SP`"
-    assert blocks[4]["type"] == "divider"
-    assert blocks[5]["text"]["text"] == "*Next*\nChoose the clean integration path"
+    assert blocks[3]["type"] == "divider"
+    assert blocks[4]["text"]["text"] == "*Next*\nChoose the clean integration path"
+    assert blocks[5]["elements"][0]["text"].startswith("Planner · `")
 
 
 def test_build_plan_update_payload_is_shorter_inside_thread() -> None:
@@ -186,10 +186,10 @@ def test_build_plan_update_payload_is_shorter_inside_thread() -> None:
     assert attachment["color"] == "#1D9E75"
     blocks = attachment["blocks"]
     assert blocks[0]["text"]["text"] == "*✅ Done*"
-    assert blocks[1]["elements"][0]["text"].startswith("`")
-    assert blocks[2]["text"]["text"] == "Confirmed it has company pages and apply paths."
-    assert blocks[3]["type"] == "divider"
-    assert blocks[4]["text"]["text"] == "*Next*\nWire the importer."
+    assert blocks[1]["text"]["text"] == "Confirmed it has company pages and apply paths."
+    assert blocks[2]["type"] == "divider"
+    assert blocks[3]["text"]["text"] == "*Next*\nWire the importer."
+    assert blocks[4]["elements"][0]["text"].startswith("Planner · Done · `")
 
 
 def test_fit_signal_has_fallbacks_for_score_ranges() -> None:

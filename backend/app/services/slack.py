@@ -221,7 +221,11 @@ def _plan_status_color(status: str) -> str:
     return mapping.get(normalized, "#888780")
 
 
-def _attachment(*, color: str, blocks: list[dict[str, object]]) -> list[dict[str, object]]:
+def _attachment(
+    *,
+    color: str,
+    blocks: list[dict[str, object]],
+) -> list[dict[str, object]]:
     return [{"color": color, "blocks": blocks}]
 
 
@@ -238,6 +242,13 @@ def _plan_meta_context(
     return {"type": "context", "elements": elements}
 
 
+def _plan_footer_context(*, label: str, timestamp: str) -> dict[str, object]:
+    return {
+        "type": "context",
+        "elements": [{"type": "mrkdwn", "text": f"{label} · `{timestamp}`"}],
+    }
+
+
 def _plan_body_section(
     *,
     text: str,
@@ -248,12 +259,7 @@ def _plan_body_section(
     }
 
 
-def _plan_heading_section(
-    *,
-    title: str,
-    timestamp: str,
-    link: str | None = None,
-) -> dict[str, object]:
+def _plan_heading_section(*, title: str, link: str | None = None) -> dict[str, object]:
     section: dict[str, object] = {
         "type": "section",
         "text": {"type": "mrkdwn", "text": f"*{title}*"},
@@ -620,13 +626,8 @@ def build_plan_update_payload(
         blocks: list[dict[str, object]] = [
             _plan_heading_section(
                 title=f"{emoji} {status_label}",
-                timestamp=timestamp,
                 link=link_text,
             ),
-            {
-                "type": "context",
-                "elements": [{"type": "mrkdwn", "text": f"`{timestamp}`"}],
-            },
             _plan_body_section(text=message_text),
         ]
         if next_text:
@@ -641,6 +642,7 @@ def build_plan_update_payload(
                     "text": {"type": "mrkdwn", "text": f"*Next*\n{next_text}"},
                 }
             )
+        blocks.append(_plan_footer_context(label=f"Planner · {status_label}", timestamp=timestamp))
         return {
             "text": f"{emoji} {status_label}: {message_text}",
             "attachments": _attachment(color=color, blocks=blocks),
@@ -650,13 +652,8 @@ def build_plan_update_payload(
         {
             **_plan_heading_section(
                 title=f"{emoji} {title_text}",
-                timestamp=timestamp,
                 link=link_text,
             ),
-        },
-        {
-            "type": "context",
-            "elements": [{"type": "mrkdwn", "text": f"`{timestamp}`"}],
         },
         _plan_body_section(text=message_text),
         _plan_meta_context(
@@ -676,6 +673,7 @@ def build_plan_update_payload(
                 "text": {"type": "mrkdwn", "text": f"*Next*\n{next_text}"},
             }
         )
+    blocks.append(_plan_footer_context(label="Planner", timestamp=timestamp))
 
     return {
         "text": f"{emoji} {title_text} · {status_label}",
