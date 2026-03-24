@@ -14,6 +14,7 @@ from app.routers import (
     companies_router,
     job_chat_router,
     jobs_router,
+    plans_router,
     research_router,
     stats_router,
     strategy_router,
@@ -58,6 +59,7 @@ app.include_router(alerts_router, prefix=settings.api_prefix)
 app.include_router(companies_router, prefix=settings.api_prefix)
 app.include_router(job_chat_router, prefix=settings.api_prefix)
 app.include_router(research_router, prefix=settings.api_prefix)
+app.include_router(plans_router, prefix=settings.api_prefix)
 app.include_router(strategy_router, prefix=settings.api_prefix)
 
 

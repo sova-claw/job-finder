@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SlackDispatchResponse(BaseModel):
@@ -26,14 +26,17 @@ class ScraperScheduleSnapshotResponse(BaseModel):
 
 
 class SlackPlanUpdateRequest(BaseModel):
-    status: str
-    message: str
-    next_step: str | None = None
-    link: str | None = None
+    status: str = Field(min_length=2, max_length=20)
+    title: str = Field(min_length=2, max_length=72)
+    message: str = Field(min_length=2, max_length=300)
+    story_points: int | None = Field(default=None, ge=1, le=13)
+    next_step: str | None = Field(default=None, max_length=300)
+    link: str | None = Field(default=None, max_length=500)
 
 
 class SlackPlanUpdateResponse(BaseModel):
     source: str = "Slack Plans"
     channel: str
     status: str
+    task_id: str | None = None
     posted_at: datetime

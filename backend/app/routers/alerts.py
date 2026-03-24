@@ -10,6 +10,7 @@ from app.schemas.alerts import (
     SlackPlanUpdateResponse,
 )
 from app.scraper.scheduler import scheduler_service
+from app.services.plan_tasks import save_plan_task
 from app.services.slack import (
     dispatch_new_jobs_to_slack,
     post_jobs_inbox_snapshot,
@@ -80,14 +81,34 @@ async def send_scraper_schedule_snapshot() -> ScraperScheduleSnapshotResponse:
 
 
 @router.post("/alerts/slack/plans", response_model=SlackPlanUpdateResponse)
-async def send_plan_update(payload: SlackPlanUpdateRequest) -> SlackPlanUpdateResponse:
+async def send_plan_update(
+    payload: SlackPlanUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+) -> SlackPlanUpdateResponse:
     try:
+        task = await save_plan_task(
+            session,
+            title=payload.title,
+            status=payload.status,
+            story_points=payload.story_points,
+            message=payload.message,
+            link=payload.link,
+            next_step=payload.next_step,
+        )
         summary = await post_plan_update(
             status=payload.status,
+            title=task.title,
             message=payload.message,
+            story_points=payload.story_points,
             next_step=payload.next_step,
             link=payload.link,
+            task_id=task.id,
         )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -97,5 +118,6 @@ async def send_plan_update(payload: SlackPlanUpdateRequest) -> SlackPlanUpdateRe
     return SlackPlanUpdateResponse(
         channel=summary.channel,
         status=summary.status,
+        task_id=summary.task_id,
         posted_at=summary.posted_at,
     )

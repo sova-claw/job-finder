@@ -64,6 +64,7 @@ class ScraperScheduleSummary:
 class SlackPlanUpdateSummary:
     channel: str
     status: str
+    task_id: str | None = None
     posted_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -180,6 +181,8 @@ def _plan_status_emoji(status: str) -> str:
     normalized = status.strip().lower()
     mapping = {
         "started": "🟡",
+        "doing": "🟡",
+        "progress": "🔄",
         "done": "✅",
         "next": "➡️",
         "blocked": "⛔",
@@ -521,20 +524,25 @@ def build_scraper_schedule_payload(entries: list[ScraperScheduleEntry]) -> dict[
 def build_plan_update_payload(
     *,
     status: str,
+    title: str,
     message: str,
+    story_points: int | None = None,
     next_step: str | None = None,
     link: str | None = None,
 ) -> dict[str, object]:
     emoji = _plan_status_emoji(status)
-    title = status.strip().capitalize() or "Update"
-    lines = [f"{emoji} *{title}:* {message.strip()}"]
+    status_label = status.strip().capitalize() or "Update"
+    header = f"{emoji} *{title.strip()}*"
+    if story_points:
+        header += f"  ·  `{story_points} SP`"
+    lines = [header, message.strip()]
     if link and link.strip():
         lines.append(f"🔗 *Link:* {link.strip()}")
     if next_step and next_step.strip():
         lines.append(f"➡️ *Next:* {next_step.strip()}")
     text = "\n".join(lines)
     return {
-        "text": f"{emoji} {title}: {message.strip()}",
+        "text": f"{emoji} {title.strip()} · {status_label}",
         "blocks": [
             {
                 "type": "section",
@@ -884,9 +892,12 @@ async def post_scraper_schedule_snapshot(
 async def post_plan_update(
     *,
     status: str,
+    title: str,
     message: str,
+    story_points: int | None = None,
     next_step: str | None = None,
     link: str | None = None,
+    task_id: str | None = None,
     client: AsyncWebClient | None = None,
 ) -> SlackPlanUpdateSummary:
     if not settings.slack_bot_token:
@@ -898,10 +909,12 @@ async def post_plan_update(
         "#plans",
         build_plan_update_payload(
             status=status,
+            title=title,
             message=message,
+            story_points=story_points,
             next_step=next_step,
             link=link,
         ),
         cache={},
     )
-    return SlackPlanUpdateSummary(channel="#plans", status=status)
+    return SlackPlanUpdateSummary(channel="#plans", status=status, task_id=task_id)

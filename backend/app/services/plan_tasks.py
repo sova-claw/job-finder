@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from uuid import uuid4
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.plan_task import PlanTask
+from app.schemas.plan_task import PlanTaskResponse
+
+
+def normalize_plan_title(title: str) -> str:
+    words = " ".join(title.strip().split())
+    if not words:
+        raise ValueError("Task title is required")
+    if len(words) <= 72:
+        return words
+    return words[:71].rstrip() + "…"
+
+
+async def save_plan_task(
+    session: AsyncSession,
+    *,
+    title: str,
+    status: str,
+    story_points: int | None = None,
+    message: str | None = None,
+    link: str | None = None,
+    next_step: str | None = None,
+) -> PlanTask:
+    normalized_title = normalize_plan_title(title)
+    normalized_status = status.strip().lower()
+
+    result = await session.execute(
+        select(PlanTask)
+        .where(
+            func.lower(PlanTask.title) == normalized_title.lower(),
+            PlanTask.completed_at.is_(None),
+        )
+        .order_by(PlanTask.updated_at.desc())
+        .limit(1)
+    )
+    task = result.scalar_one_or_none()
+
+    if task is None:
+        task = PlanTask(
+            id=str(uuid4()),
+            title=normalized_title,
+            status=normalized_status,
+        )
+        session.add(task)
+
+    task.status = normalized_status
+    task.story_points = story_points
+    task.message = message.strip() if message and message.strip() else None
+    task.link = link.strip() if link and link.strip() else None
+    task.next_step = next_step.strip() if next_step and next_step.strip() else None
+    task.completed_at = (
+        datetime.now(UTC) if normalized_status == "done" else None
+    )
+
+    await session.commit()
+    await session.refresh(task)
+    return task
+
+
+async def list_plan_tasks(
+    session: AsyncSession,
+    *,
+    limit: int = 30,
+) -> list[PlanTaskResponse]:
+    result = await session.execute(
+        select(PlanTask).order_by(PlanTask.updated_at.desc()).limit(limit)
+    )
+    return [PlanTaskResponse.model_validate(item) for item in result.scalars().all()]

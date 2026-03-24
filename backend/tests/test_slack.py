@@ -148,14 +148,17 @@ def test_build_scraper_schedule_payload_contains_cadence_and_next_run() -> None:
 def test_build_plan_update_payload_is_short_and_structured() -> None:
     payload = slack.build_plan_update_payload(
         status="started",
+        title="StartupIndex source",
         message="StartupIndex discovery source",
+        story_points=3,
         link="https://startup-index.ch/en/the-startup-directory/",
         next_step="Choose the clean integration path",
     )
 
-    assert payload["text"] == "🟡 Started: StartupIndex discovery source"
+    assert payload["text"] == "🟡 StartupIndex source · Started"
     body = payload["blocks"][0]["text"]["text"]
-    assert "🟡 *Started:* StartupIndex discovery source" in body
+    assert "🟡 *StartupIndex source*  ·  `3 SP`" in body
+    assert "StartupIndex discovery source" in body
     assert "🔗 *Link:* https://startup-index.ch/en/the-startup-directory/" in body
     assert "➡️ *Next:* Choose the clean integration path" in body
 
@@ -549,13 +552,17 @@ async def test_post_plan_update_posts_to_plans(monkeypatch) -> None:
 
     summary = await slack.post_plan_update(
         status="done",
+        title="Slack format",
         message="Slack formatting polished",
+        story_points=2,
         link="https://example.com/update",
         next_step="StartupIndex discovery source",
+        task_id="task-1",
         client=object(),  # type: ignore[arg-type]
     )
 
     assert summary.channel == "#plans"
     assert summary.status == "done"
+    assert summary.task_id == "task-1"
     assert posted[0][0] == "#plans"
-    assert posted[0][1]["text"] == "✅ Done: Slack formatting polished"
+    assert posted[0][1]["text"] == "✅ Slack format · Done"
