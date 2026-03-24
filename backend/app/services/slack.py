@@ -207,6 +207,24 @@ def _plan_status_label(status: str) -> str:
     return mapping.get(normalized, "Update")
 
 
+def _plan_status_color(status: str) -> str:
+    normalized = status.strip().lower()
+    mapping = {
+        "started": "#1D9E75",
+        "doing": "#1D9E75",
+        "progress": "#378ADD",
+        "done": "#1D9E75",
+        "next": "#378ADD",
+        "blocked": "#7F77DD",
+        "info": "#888780",
+    }
+    return mapping.get(normalized, "#888780")
+
+
+def _attachment(*, color: str, blocks: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [{"color": color, "blocks": blocks}]
+
+
 def _slugify_channel_part(value: str | None, *, fallback: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
     return normalized or fallback
@@ -549,6 +567,7 @@ def build_plan_update_payload(
 ) -> dict[str, object]:
     emoji = _plan_status_emoji(status)
     status_label = _plan_status_label(status)
+    color = _plan_status_color(status)
     timestamp = datetime.now().strftime("%H:%M")
     title_text = title.strip()
     message_text = message.strip()
@@ -558,10 +577,14 @@ def build_plan_update_payload(
     if threaded:
         blocks: list[dict[str, object]] = [
             {
+                "type": "header",
+                "text": {"type": "plain_text", "text": f"{emoji} {status_label}"},
+            },
+            {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"{emoji} *{status_label}*\n{message_text}",
+                    "text": message_text,
                 },
             },
             {
@@ -593,7 +616,7 @@ def build_plan_update_payload(
             )
         return {
             "text": f"{emoji} {status_label}: {message_text}",
-            "blocks": blocks,
+            "attachments": _attachment(color=color, blocks=blocks),
         }
 
     context_parts = [f"{status_label} · {timestamp}"]
@@ -637,7 +660,7 @@ def build_plan_update_payload(
 
     return {
         "text": f"{emoji} {title_text} · {status_label}",
-        "blocks": blocks,
+        "attachments": _attachment(color=color, blocks=blocks),
     }
 
 
