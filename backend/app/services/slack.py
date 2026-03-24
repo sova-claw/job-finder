@@ -228,15 +228,13 @@ def _attachment(*, color: str, blocks: list[dict[str, object]]) -> list[dict[str
 def _plan_meta_context(
     *,
     status_label: str,
-    timestamp: str,
     story_points: int | None = None,
 ) -> dict[str, object]:
     elements: list[dict[str, str]] = [
         {"type": "mrkdwn", "text": f"`{status_label}`"},
-        {"type": "mrkdwn", "text": f"`{timestamp}`"},
     ]
     if story_points is not None:
-        elements.insert(1, {"type": "mrkdwn", "text": f"`{story_points} SP`"})
+        elements.append({"type": "mrkdwn", "text": f"`{story_points} SP`"})
     return {"type": "context", "elements": elements}
 
 
@@ -256,6 +254,16 @@ def _plan_body_section(
             "url": link,
         }
     return section
+
+
+def _plan_heading_section(*, title: str, timestamp: str) -> dict[str, object]:
+    return {
+        "type": "section",
+        "fields": [
+            {"type": "mrkdwn", "text": f"*{title}*"},
+            {"type": "mrkdwn", "text": f"`{timestamp}`"},
+        ],
+    }
 
 
 def _slugify_channel_part(value: str | None, *, fallback: str) -> str:
@@ -609,12 +617,8 @@ def build_plan_update_payload(
 
     if threaded:
         blocks: list[dict[str, object]] = [
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": f"{emoji} {status_label}"},
-            },
+            _plan_heading_section(title=f"{emoji} {status_label}", timestamp=timestamp),
             _plan_body_section(text=message_text, link=link_text),
-            _plan_meta_context(status_label=status_label, timestamp=timestamp),
         ]
         if next_text:
             blocks.append(
@@ -635,13 +639,11 @@ def build_plan_update_payload(
 
     blocks = [
         {
-            "type": "header",
-            "text": {"type": "plain_text", "text": f"{emoji} {title_text}"},
+            **_plan_heading_section(title=f"{emoji} {title_text}", timestamp=timestamp),
         },
         _plan_body_section(text=message_text, link=link_text),
         _plan_meta_context(
             status_label=status_label,
-            timestamp=timestamp,
             story_points=story_points,
         ),
     ]
