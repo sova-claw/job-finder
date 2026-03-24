@@ -1,4 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import json
+import os
+from urllib.parse import parse_qs
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from slack_sdk.signature import SignatureVerifier
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
@@ -18,6 +23,19 @@ from app.services.slack import (
 )
 
 router = APIRouter(tags=["alerts"])
+
+
+def _verify_slack_request(request: Request, body: bytes) -> None:
+    signing_secret = os.getenv("SLACK_SIGNING_SECRET", "").strip()
+    if not signing_secret:
+        return
+
+    verifier = SignatureVerifier(signing_secret=signing_secret)
+    if not verifier.is_valid_request(body=body, headers=request.headers):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Slack signature",
+        )
 
 
 @router.post("/alerts/slack/send", response_model=SlackDispatchResponse)
@@ -128,3 +146,72 @@ async def send_plan_update(
         task_id=summary.task_id,
         posted_at=summary.posted_at,
     )
+
+
+@router.post("/alerts/slack/interactivity")
+async def handle_slack_interactivity(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    body = await request.body()
+    _verify_slack_request(request, body)
+
+    payload_raw = parse_qs(body.decode("utf-8")).get("payload", [None])[0]
+    if not payload_raw:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing Slack payload",
+        )
+
+    payload = json.loads(payload_raw)
+    action = (payload.get("actions") or [{}])[0]
+    if not str(action.get("action_id", "")).startswith("plan_pick_task"):
+        return Response(status_code=status.HTTP_200_OK)
+
+    value = json.loads(action.get("value", "{}"))
+    title = str(value.get("title", "")).strip()
+    if not title:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Task title is required",
+        )
+
+    story_points_raw = value.get("story_points")
+    story_points = int(story_points_raw) if story_points_raw is not None else None
+
+    try:
+        task = await save_plan_task(
+            session,
+            title=title,
+            status="started",
+            story_points=story_points,
+            message="Picked from task list.",
+            next_step="Start the work.",
+        )
+        summary = await post_plan_update(
+            status="started",
+            title=task.title,
+            message="Picked from task list.",
+            story_points=story_points,
+            next_step="Start the work.",
+            task_id=task.id,
+            thread_ts=task.slack_thread_ts,
+        )
+        await attach_plan_task_slack_post(
+            session,
+            task_id=task.id,
+            thread_ts=summary.thread_ts or "",
+            post_ts=summary.post_ts or "",
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    return Response(status_code=status.HTTP_200_OK)

@@ -204,8 +204,11 @@ def test_build_plan_update_payload_info_card_is_simple() -> None:
     blocks = attachment["blocks"]
     assert blocks[0]["text"]["text"] == "🔔  Task list"
     assert blocks[1]["text"]["text"] == "1. Djinni auth scrape\n2. StartupIndex source"
-    assert blocks[2]["elements"][0]["text"].startswith("🕐 ")
-    assert blocks[3]["elements"][0]["text"] == "➡️ Next: Pick one and start."
+    assert blocks[2]["type"] == "actions"
+    assert blocks[2]["elements"][0]["action_id"] == "plan_pick_task_0"
+    assert blocks[2]["elements"][0]["text"]["text"] == "Djinni auth scrape"
+    assert blocks[3]["elements"][0]["text"].startswith("🕐 ")
+    assert blocks[4]["elements"][0]["text"] == "➡️ Next: Pick one and start."
 
 
 def test_fit_signal_has_fallbacks_for_score_ranges() -> None:

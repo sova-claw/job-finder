@@ -283,6 +283,39 @@ def _plan_note_section(message: str) -> dict[str, object]:
     }
 
 
+def _parse_task_choices(message: str) -> list[dict[str, object]]:
+    choices: list[dict[str, object]] = []
+    for raw_line in message.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = re.match(r"^\d+\.\s*(.*?)\s*(?:·\s*(\d+)\s*SP)?$", line)
+        if not match:
+            continue
+        title = " ".join(match.group(1).split()).strip()
+        if not title:
+            continue
+        story_points = int(match.group(2)) if match.group(2) else None
+        choices.append({"title": title, "story_points": story_points})
+    return choices[:5]
+
+
+def _plan_task_actions(choices: list[dict[str, object]]) -> dict[str, object]:
+    return {
+        "type": "actions",
+        "elements": [
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": str(choice["title"])[:75]},
+                "action_id": f"plan_pick_task_{index}",
+                "value": json.dumps(choice),
+                **({"style": "primary"} if index == 0 else {}),
+            }
+            for index, choice in enumerate(choices)
+        ],
+    }
+
+
 def _plan_header_block(text: str) -> dict[str, object]:
     return {
         "type": "header",
@@ -651,11 +684,14 @@ def build_plan_update_payload(
     link_text = link.strip() if link and link.strip() else None
 
     if not threaded and status.strip().lower() == "info":
+        choices = _parse_task_choices(message_text)
         blocks = [
             _plan_header_block(f"{emoji}  {title_text}"),
             _plan_note_section(message_text),
-            _plan_meta_context(timestamp=timestamp, story_points=story_points),
         ]
+        if choices:
+            blocks.append(_plan_task_actions(choices))
+        blocks.append(_plan_meta_context(timestamp=timestamp, story_points=story_points))
         if next_text:
             blocks.append(
                 {
