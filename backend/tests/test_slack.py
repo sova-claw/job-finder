@@ -168,11 +168,8 @@ def test_build_plan_update_payload_is_short_and_structured() -> None:
     assert fields[2]["text"].startswith("*Time*\n")
     assert blocks[3]["type"] == "divider"
     assert blocks[4]["text"]["text"] == "*Next*\nChoose the clean integration path"
-    assert blocks[5]["elements"][0]["text"]["text"] == "Open link"
-    assert (
-        blocks[5]["elements"][0]["url"]
-        == "https://startup-index.ch/en/the-startup-directory/"
-    )
+    assert blocks[1]["accessory"]["text"]["text"] == "Open"
+    assert blocks[1]["accessory"]["url"] == "https://startup-index.ch/en/the-startup-directory/"
 
 
 def test_build_plan_update_payload_is_shorter_inside_thread() -> None:

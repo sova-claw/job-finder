@@ -240,6 +240,24 @@ def _plan_meta_fields(
     return {"type": "section", "fields": fields}
 
 
+def _plan_body_section(
+    *,
+    text: str,
+    link: str | None = None,
+) -> dict[str, object]:
+    section: dict[str, object] = {
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": text},
+    }
+    if link:
+        section["accessory"] = {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Open"},
+            "url": link,
+        }
+    return section
+
+
 def _slugify_channel_part(value: str | None, *, fallback: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
     return normalized or fallback
@@ -595,13 +613,7 @@ def build_plan_update_payload(
                 "type": "header",
                 "text": {"type": "plain_text", "text": f"{emoji} {status_label}"},
             },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": message_text,
-                },
-            },
+            _plan_body_section(text=message_text, link=link_text),
             _plan_meta_fields(status_label=status_label, timestamp=timestamp),
         ]
         if next_text:
@@ -616,19 +628,6 @@ def build_plan_update_payload(
                     "text": {"type": "mrkdwn", "text": f"*Next*\n{next_text}"},
                 }
             )
-        if link_text:
-            blocks.append(
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "Open link"},
-                            "url": link_text,
-                        }
-                    ],
-                }
-            )
         return {
             "text": f"{emoji} {status_label}: {message_text}",
             "attachments": _attachment(color=color, blocks=blocks),
@@ -639,10 +638,7 @@ def build_plan_update_payload(
             "type": "header",
             "text": {"type": "plain_text", "text": f"{emoji} {title_text}"},
         },
-        {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": message_text},
-            },
+        _plan_body_section(text=message_text, link=link_text),
         _plan_meta_fields(
             status_label=status_label,
             timestamp=timestamp,
@@ -659,19 +655,6 @@ def build_plan_update_payload(
             {
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": f"*Next*\n{next_text}"},
-            }
-        )
-    if link_text:
-        blocks.append(
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "Open link"},
-                        "url": link_text,
-                    }
-                ],
             }
         )
 
