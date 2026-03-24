@@ -66,6 +66,44 @@ def test_build_jobs_inbox_payload_has_date_salary_priority_and_source() -> None:
     assert "Bolt" in body
 
 
+def test_build_scraper_run_payload_contains_operational_fields() -> None:
+    payload = slack.build_scraper_run_payload(
+        slack.ScraperRunSummary(
+            source="DOU",
+            status="success",
+            duration_seconds=12.4,
+            count_found=18,
+            count_new=4,
+            count_skipped=14,
+            count_failed=0,
+        )
+    )
+
+    assert payload["text"] == "Scraper run: DOU (success)"
+    fields = payload["blocks"][1]["fields"]
+    assert any("Status" in field["text"] and "Success" in field["text"] for field in fields)
+    assert any("Duration" in field["text"] and "12.4s" in field["text"] for field in fields)
+    assert any("Found" in field["text"] and "18" in field["text"] for field in fields)
+    assert any("New" in field["text"] and "4" in field["text"] for field in fields)
+    assert len(payload["blocks"]) == 2
+
+
+def test_build_scraper_run_payload_includes_error_only_on_failure() -> None:
+    payload = slack.build_scraper_run_payload(
+        slack.ScraperRunSummary(
+            source="LinkedIn",
+            status="failed",
+            duration_seconds=7.2,
+            count_failed=1,
+            error="network timeout",
+        )
+    )
+
+    assert payload["text"] == "Scraper run: LinkedIn (failed)"
+    assert len(payload["blocks"]) == 3
+    assert payload["blocks"][2]["text"]["text"] == "*Error*\nnetwork timeout"
+
+
 def test_fit_signal_has_fallbacks_for_score_ranges() -> None:
     assert slack._fit_signal(_job(match_score=82)) == "OK strong"
     assert slack._fit_signal(_job(match_score=60)) == "! partial"
@@ -294,3 +332,63 @@ async def test_post_jobs_inbox_snapshot_posts_to_jobs_inbox(monkeypatch) -> None
     assert summary.count_rows == 2
     assert posted[0][0] == "#jobs-inbox"
     assert posted[0][1]["text"] == "Jobs inbox snapshot"
+
+
+@pytest.mark.asyncio
+async def test_post_scraper_run_report_creates_channel_and_posts(monkeypatch) -> None:
+    monkeypatch.setattr(slack.settings, "slack_bot_token", "xoxb-test")
+    monkeypatch.setattr(slack.settings, "slack_scraper_report_channel", "#scraper-runs")
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class FakeClient:
+        async def conversations_list(
+            self,
+            *,
+            limit: int,
+            cursor: str | None,
+            exclude_archived: bool,
+            types: str,
+        ):
+            calls.append(
+                (
+                    "list",
+                    {
+                        "limit": limit,
+                        "cursor": cursor,
+                        "exclude_archived": exclude_archived,
+                        "types": types,
+                    },
+                )
+            )
+            return {"channels": [], "response_metadata": {"next_cursor": ""}}
+
+        async def conversations_create(self, *, name: str, is_private: bool):
+            calls.append(("create", {"name": name, "is_private": is_private}))
+            return {"channel": {"id": "C777", "name": name}}
+
+        async def conversations_join(self, *, channel: str):
+            calls.append(("join", {"channel": channel}))
+            return {"ok": True}
+
+        async def chat_postMessage(self, *, channel: str, **payload):
+            calls.append(("post", {"channel": channel, "payload": payload}))
+            return {"ok": True}
+
+    summary = await slack.post_scraper_run_report(
+        slack.ScraperRunSummary(
+            source="DOU",
+            status="success",
+            duration_seconds=1.4,
+            count_found=3,
+            count_new=1,
+            count_skipped=2,
+        ),
+        client=FakeClient(),  # type: ignore[arg-type]
+    )
+
+    assert summary.source == "DOU"
+    assert [name for name, _ in calls] == ["list", "create", "join", "post"]
+    assert calls[1][1] == {"name": "scraper-runs", "is_private": False}
+    assert calls[3][1]["channel"] == "C777"
+    assert calls[3][1]["payload"]["text"] == "Scraper run: DOU (success)"

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
+from time import perf_counter
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import SessionLocal
@@ -13,7 +16,11 @@ from app.scraper.djinni import scrape_djinni
 from app.scraper.dou import scrape_dou
 from app.scraper.hn_jobs import scrape_hn_jobs
 from app.services.company_sync import sync_airtable_companies
-from app.services.slack import dispatch_new_jobs_to_slack
+from app.services.slack import (
+    ScraperRunSummary,
+    dispatch_new_jobs_to_slack,
+    post_scraper_run_report,
+)
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -24,53 +31,64 @@ class SchedulerService:
         self.scheduler = AsyncIOScheduler(timezone="UTC")
         self._started = False
 
-    async def run_dou_job(self) -> None:
+    async def _run_scraper_job(
+        self,
+        *,
+        source: str,
+        scrape_fn: Callable[[AsyncSession], Awaitable[dict[str, int]]],
+    ) -> None:
+        started = perf_counter()
         async with SessionLocal() as session:
             try:
-                summary = await scrape_dou(session)
+                summary = await scrape_fn(session)
                 logger.info("scrape complete", extra=summary)
+                await self._post_scraper_summary(
+                    ScraperRunSummary(
+                        source=summary.get("source", source),
+                        status="success",
+                        duration_seconds=perf_counter() - started,
+                        count_found=summary.get("count_found", 0),
+                        count_new=summary.get("count_new", 0),
+                        count_skipped=summary.get("count_skipped", 0),
+                        count_failed=summary.get("count_failed", 0),
+                    )
+                )
             except Exception as exc:  # noqa: BLE001
-                logger.exception("DOU scrape failed: %s", exc)
+                logger.exception("%s scrape failed: %s", source, exc)
+                await self._post_scraper_summary(
+                    ScraperRunSummary(
+                        source=source,
+                        status="failed",
+                        duration_seconds=perf_counter() - started,
+                        error=str(exc),
+                    )
+                )
+
+    async def _post_scraper_summary(self, summary: ScraperRunSummary) -> None:
+        try:
+            await post_scraper_run_report(summary)
+        except RuntimeError:
+            logger.info("Scraper Slack reporting skipped because Slack is not configured")
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Scraper Slack reporting failed: %s", exc)
+
+    async def run_dou_job(self) -> None:
+        await self._run_scraper_job(source="DOU", scrape_fn=scrape_dou)
 
     async def run_djinni_job(self) -> None:
-        async with SessionLocal() as session:
-            try:
-                summary = await scrape_djinni(session)
-                logger.info("scrape complete", extra=summary)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Djinni scrape failed: %s", exc)
+        await self._run_scraper_job(source="Djinni", scrape_fn=scrape_djinni)
 
     async def run_bigco_job(self) -> None:
-        async with SessionLocal() as session:
-            try:
-                summary = await scrape_bigco(session)
-                logger.info("scrape complete", extra=summary)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("BigCo scrape failed: %s", exc)
+        await self._run_scraper_job(source="BigCo", scrape_fn=scrape_bigco)
 
     async def run_careers_page_job(self) -> None:
-        async with SessionLocal() as session:
-            try:
-                summary = await scrape_careers_pages(session)
-                logger.info("scrape complete", extra=summary)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Careers-page scrape failed: %s", exc)
+        await self._run_scraper_job(source="CareersPage", scrape_fn=scrape_careers_pages)
 
     async def run_linkedin_job(self) -> None:
-        async with SessionLocal() as session:
-            try:
-                summary = await scrape_apify_linkedin(session)
-                logger.info("scrape complete", extra=summary)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("LinkedIn scrape failed: %s", exc)
+        await self._run_scraper_job(source="LinkedIn", scrape_fn=scrape_apify_linkedin)
 
     async def run_hn_job(self) -> None:
-        async with SessionLocal() as session:
-            try:
-                summary = await scrape_hn_jobs(session)
-                logger.info("scrape complete", extra=summary)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("HN scrape failed: %s", exc)
+        await self._run_scraper_job(source="HN", scrape_fn=scrape_hn_jobs)
 
     async def run_airtable_sync_job(self) -> None:
         async with SessionLocal() as session:

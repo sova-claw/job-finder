@@ -34,6 +34,19 @@ class SlackInboxSummary:
 
 
 @dataclass(slots=True)
+class ScraperRunSummary:
+    source: str
+    status: str
+    duration_seconds: float
+    count_found: int = 0
+    count_new: int = 0
+    count_skipped: int = 0
+    count_failed: int = 0
+    error: str | None = None
+    reported_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(slots=True)
 class JobSlackChannelSummary:
     job_id: str
     channel_id: str
@@ -200,6 +213,37 @@ def _channel_overrides() -> dict[str, str]:
     return {_normalize_channel_name(key): str(value) for key, value in parsed.items()}
 
 
+async def _resolve_or_create_public_channel_id(
+    client: AsyncWebClient,
+    channel_name: str,
+    *,
+    cache: dict[str, str],
+) -> str:
+    try:
+        return await _resolve_channel_id(
+            client,
+            channel_name,
+            cache=cache,
+            types="public_channel",
+        )
+    except RuntimeError:
+        normalized = _normalize_channel_name(channel_name)
+        try:
+            response = await client.conversations_create(name=normalized, is_private=False)
+        except SlackApiError as exc:
+            if exc.response.get("error") != "name_taken":
+                raise
+            return await _resolve_channel_id(
+                client,
+                channel_name,
+                cache=cache,
+                types="public_channel",
+            )
+        channel_id = str(response["channel"]["id"])
+        cache[normalized] = channel_id
+        return channel_id
+
+
 def should_auto_create_job_channel(job: Job) -> bool:
     if not settings.slack_auto_create_job_channels:
         return False
@@ -322,6 +366,44 @@ def build_jobs_inbox_payload(jobs: list[Job]) -> dict[str, object]:
                 },
             },
         ],
+    }
+
+
+def build_scraper_run_payload(summary: ScraperRunSummary) -> dict[str, object]:
+    status_label = "Success" if summary.status == "success" else "Failed"
+    duration = f"{summary.duration_seconds:.1f}s"
+    blocks: list[dict[str, object]] = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"Scraper run · {summary.source}"},
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Status*\n{status_label}"},
+                {"type": "mrkdwn", "text": f"*Duration*\n{duration}"},
+                {"type": "mrkdwn", "text": f"*Found*\n{summary.count_found}"},
+                {"type": "mrkdwn", "text": f"*New*\n{summary.count_new}"},
+                {"type": "mrkdwn", "text": f"*Skipped*\n{summary.count_skipped}"},
+                {"type": "mrkdwn", "text": f"*Failed items*\n{summary.count_failed}"},
+            ],
+        },
+    ]
+
+    if summary.error:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Error*\n{summary.error}",
+                },
+            }
+        )
+
+    return {
+        "text": f"Scraper run: {summary.source} ({status_label.lower()})",
+        "blocks": blocks,
     }
 
 
@@ -592,3 +674,34 @@ async def post_jobs_inbox_snapshot(session: AsyncSession) -> SlackInboxSummary:
         cache={},
     )
     return SlackInboxSummary(channel="#jobs-inbox", count_rows=len(jobs))
+
+
+async def post_scraper_run_report(
+    summary: ScraperRunSummary,
+    *,
+    client: AsyncWebClient | None = None,
+) -> ScraperRunSummary:
+    if not settings.slack_bot_token:
+        raise RuntimeError("SLACK_BOT_TOKEN is required to post scraper run reports.")
+
+    channel_name = settings.slack_scraper_report_channel.strip()
+    if not channel_name:
+        return summary
+
+    slack_client = client or AsyncWebClient(token=settings.slack_bot_token)
+    cache: dict[str, str] = {}
+    channel_id = await _resolve_or_create_public_channel_id(
+        slack_client,
+        channel_name,
+        cache=cache,
+    )
+    try:
+        await slack_client.conversations_join(channel=channel_id)
+    except SlackApiError as exc:
+        if exc.response.get("error") not in {"already_in_channel", "is_archived"}:
+            raise
+    await slack_client.chat_postMessage(
+        channel=channel_id,
+        **build_scraper_run_payload(summary),
+    )
+    return summary
