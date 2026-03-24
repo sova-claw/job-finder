@@ -273,6 +273,13 @@ def _plan_heading_section(*, title: str, link: str | None = None) -> dict[str, o
     return section
 
 
+def _plan_header_block(text: str) -> dict[str, object]:
+    return {
+        "type": "header",
+        "text": {"type": "plain_text", "text": text, "emoji": True},
+    }
+
+
 def _slugify_channel_part(value: str | None, *, fallback: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
     return normalized or fallback
@@ -624,10 +631,7 @@ def build_plan_update_payload(
 
     if threaded:
         blocks: list[dict[str, object]] = [
-            _plan_heading_section(
-                title=f"{emoji} {status_label}",
-                link=link_text,
-            ),
+            _plan_header_block(f"{emoji} {status_label}"),
             _plan_body_section(text=message_text),
         ]
         if next_text:
@@ -649,17 +653,13 @@ def build_plan_update_payload(
         }
 
     blocks = [
-        {
-            **_plan_heading_section(
-                title=f"{emoji} {title_text}",
-                link=link_text,
-            ),
-        },
-        _plan_body_section(text=message_text),
+        _plan_header_block(f"{emoji} {status_label}"),
+        _plan_heading_section(title=title_text, link=link_text),
         _plan_meta_context(
             status_label=status_label,
             story_points=story_points,
         ),
+        _plan_body_section(text=message_text),
     ]
     if next_text:
         blocks.append(
