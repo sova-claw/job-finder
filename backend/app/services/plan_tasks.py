@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import func, select
@@ -30,6 +30,20 @@ def estimate_for_story_points(story_points: int | None) -> str | None:
         5: "~45 min",
     }
     return mapping.get(story_points, "~1h")
+
+
+def estimate_finish_time(story_points: int | None) -> str | None:
+    if story_points is None:
+        return None
+    minute_mapping = {
+        1: 10,
+        2: 15,
+        3: 25,
+        5: 45,
+    }
+    minutes = minute_mapping.get(story_points, 60)
+    finish_at = datetime.now().astimezone() + timedelta(minutes=minutes)
+    return f"Ends ~{finish_at.strftime('%H:%M')}"
 
 
 async def save_plan_task(
@@ -108,6 +122,7 @@ async def start_plan_task_from_selection(
 ) -> SlackPlanUpdateSummary:
     normalized_title = normalize_plan_title(title)
     estimate = estimate_for_story_points(story_points)
+    eta_text = estimate_finish_time(story_points)
     started_message = (
         f"In progress · est. {estimate}."
         if estimate
@@ -127,6 +142,7 @@ async def start_plan_task_from_selection(
         title=task.title,
         message=started_message,
         story_points=story_points,
+        eta_text=eta_text,
         next_step=started_next_step,
         task_id=task.id,
         thread_ts=task.slack_thread_ts or default_thread_ts,

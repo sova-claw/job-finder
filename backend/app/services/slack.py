@@ -251,10 +251,13 @@ def _plan_meta_context(
     *,
     timestamp: str,
     story_points: int | None = None,
+    eta_text: str | None = None,
 ) -> dict[str, object]:
     elements: list[dict[str, str]] = [{"type": "mrkdwn", "text": f"🕐 {timestamp}"}]
     if story_points is not None:
         elements.insert(0, {"type": "mrkdwn", "text": f"◦ {story_points} SP"})
+    if eta_text:
+        elements.append({"type": "mrkdwn", "text": f"⏱ {eta_text}"})
     return {"type": "context", "elements": elements}
 
 
@@ -669,6 +672,7 @@ def build_plan_update_payload(
     title: str,
     message: str,
     story_points: int | None = None,
+    eta_text: str | None = None,
     next_step: str | None = None,
     link: str | None = None,
     threaded: bool = False,
@@ -691,7 +695,13 @@ def build_plan_update_payload(
         ]
         if choices:
             blocks.append(_plan_task_actions(choices))
-        blocks.append(_plan_meta_context(timestamp=timestamp, story_points=story_points))
+        blocks.append(
+            _plan_meta_context(
+                timestamp=timestamp,
+                story_points=story_points,
+                eta_text=eta_text,
+            )
+        )
         if next_text:
             blocks.append(
                 {
@@ -712,7 +722,11 @@ def build_plan_update_payload(
             _plan_header_block(f"{emoji}  {status_heading}"),
             _plan_task_line(title=title_text),
             _plan_note_section(message_text),
-            _plan_meta_context(timestamp=timestamp, story_points=story_points),
+            _plan_meta_context(
+                timestamp=timestamp,
+                story_points=story_points,
+                eta_text=eta_text,
+            ),
         ]
         if next_text:
             blocks.append(
@@ -736,6 +750,7 @@ def build_plan_update_payload(
         _plan_meta_context(
             timestamp=timestamp,
             story_points=story_points,
+            eta_text=eta_text,
         ),
     ]
     if next_text:
@@ -1100,6 +1115,7 @@ async def post_plan_update(
     title: str,
     message: str,
     story_points: int | None = None,
+    eta_text: str | None = None,
     next_step: str | None = None,
     link: str | None = None,
     task_id: str | None = None,
@@ -1118,6 +1134,7 @@ async def post_plan_update(
             title=title,
             message=message,
             story_points=story_points,
+            eta_text=eta_text,
             next_step=next_step,
             link=link,
             threaded=thread_ts is not None,

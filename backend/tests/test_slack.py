@@ -151,6 +151,7 @@ def test_build_plan_update_payload_is_short_and_structured() -> None:
         title="StartupIndex source",
         message="StartupIndex discovery source",
         story_points=3,
+        eta_text="Ends ~14:55",
         link="https://startup-index.ch/en/the-startup-directory/",
         next_step="Choose the clean integration path",
     )
@@ -168,6 +169,7 @@ def test_build_plan_update_payload_is_short_and_structured() -> None:
     meta = [item["text"] for item in blocks[3]["elements"]]
     assert meta[0] == "◦ 3 SP"
     assert meta[1].startswith("🕐 ")
+    assert meta[2] == "⏱ Ends ~14:55"
     next_meta = [item["text"] for item in blocks[4]["elements"]]
     assert next_meta[0] == "➡️ Next: Choose the clean integration path"
 
@@ -178,6 +180,7 @@ def test_build_plan_update_payload_is_shorter_inside_thread() -> None:
         title="StartupIndex source",
         message="Confirmed it has company pages and apply paths.",
         story_points=3,
+        eta_text="Ends ~14:55",
         next_step="Wire the importer.",
         threaded=True,
     )
@@ -192,6 +195,7 @@ def test_build_plan_update_payload_is_shorter_inside_thread() -> None:
     meta = [item["text"] for item in blocks[3]["elements"]]
     assert meta[0] == "◦ 3 SP"
     assert meta[1].startswith("🕐 ")
+    assert meta[2] == "⏱ Ends ~14:55"
     assert blocks[4]["elements"][0]["text"] == "➡️ Next: Wire the importer."
 
 
