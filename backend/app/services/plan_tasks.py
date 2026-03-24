@@ -94,11 +94,12 @@ async def start_plan_task_from_selection(
     story_points: int | None = None,
     default_thread_ts: str | None = None,
 ) -> SlackPlanUpdateSummary:
-    started_message = "Work started from task list."
-    started_next_step = "First update will land here."
+    normalized_title = normalize_plan_title(title)
+    started_message = f"Started: {normalized_title}."
+    started_next_step = f"First update on {normalized_title} will land here."
     task = await save_plan_task(
         session,
-        title=title,
+        title=normalized_title,
         status="started",
         story_points=story_points,
         message=started_message,
