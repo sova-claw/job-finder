@@ -4,8 +4,10 @@ The scraper family is split into separate repos so each scraper can be reused pr
 shipped on Apify, or monetized on its own.
 
 ## Repo family
-- `../scraper-core`
-- `../scraper-djinni-market-data`
+- local: `../scraper-core`
+- remote: `git@github.com:sova-claw/scraper-core.git`
+- local: `../scraper-djinni-market-data`
+- remote: `git@github.com:sova-claw/scraper-djinni-market-data.git`
 - later: `../scraper-dou-market-data`, `../scraper-startupindex`, etc.
 
 ## job_finder integration
