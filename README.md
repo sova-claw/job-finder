@@ -104,7 +104,7 @@ Optional separate utility:
 Recommended mode for stable planning context:
 - `local-roles`
 - `@Claude` is handled by the local bridge, not the native Slack Claude app
-- planner context is loaded from `agents/claude/CONTEXT.md`, `agents/claude/MEMORY.md`, and `agents/claude/GOALS.md`
+- planner context is loaded from `agents/claude/CONTEXT.md`
 - executor context is loaded from `agents/codex/CONTEXT.md`
 - specialist context is loaded from `agents/llama/CONTEXT.md` and `agents/llama/MEMORY.md`
 - thread transcript is loaded from local session storage
@@ -113,7 +113,6 @@ Recommended mode for stable planning context:
 - executor and specialist bridges can hand the thread back to Claude directly with `PLANNER_POST_TOKEN`
 - active planning/development can run for a bounded number of automatic passes via `AUTO_THREAD_MAX_CYCLES`
 - Codex can switch into technical-planner mode and delegate bounded specialist work to Llama
-- human Slack feedback can update Claude's communication guidance in memory
 - the work-cycle runner can post with real Claude/Codex identities and stop on visible planner/executor timeouts
 - optional night-shift runner can execute bounded `Claude -> Codex` cycles in a new Slack thread
 
@@ -222,8 +221,6 @@ Backlog blueprint:
   - `AGENT_BRIDGE.md`
 - Planner context:
   - `agents/claude/CONTEXT.md`
-  - `agents/claude/MEMORY.md`
-  - `agents/claude/GOALS.md`
 - Executor context:
   - `agents/codex/CONTEXT.md`
 - Llama context:

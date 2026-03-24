@@ -19,9 +19,6 @@ The bridge owns the planner context and reuses it on every call.
 
 Tracked in repo:
 - `agents/claude/CONTEXT.md`
-- `agents/claude/MEMORY.md`
-- `agents/claude/GOALS.md`
-  - updated by the bridge after planner and executor replies
 - `agents/codex/CONTEXT.md`
 - `agents/llama/CONTEXT.md`
 - `agents/llama/MEMORY.md`
@@ -60,7 +57,7 @@ Executor reply appears in-thread as `Codex executor`.
 ## Why This Works Better
 
 - planner context is project-owned, not Slack-app-owned
-- every planner call gets the same long-lived context
+- every planner call gets the same stable planner context
 - thread transcript adds task-local context
 - repo state adds current implementation context
-- explicit goal state keeps the thread aligned around one bounded outcome
+- keeping Claude stateless reduces stale carry-over between threads

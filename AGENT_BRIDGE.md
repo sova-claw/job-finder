@@ -19,11 +19,6 @@ Slack is only the UI. The agent state lives in the repo.
 ### Claude planner
 - `agents/claude/CONTEXT.md`
   - stable planner role and operating rules
-- `agents/claude/MEMORY.md`
-  - rolling planner memory, updated after planner and executor replies
-  - also updated from human Slack coaching feedback
-- `agents/claude/GOALS.md`
-  - current goal, success check, active thread goals, recent progress, open risks
 
 ### Codex executor
 - `agents/codex/CONTEXT.md`
@@ -41,7 +36,10 @@ Slack is only the UI. The agent state lives in the repo.
 - current repo state
   - branch, status, recent commits
 
-Every planner call receives all of those inputs.
+Every planner call receives:
+- planner context
+- Slack thread transcript
+- current repo state
 
 ## Goal-Driven Flow
 
@@ -61,15 +59,6 @@ Executor replies follow this packet:
 - `Blockers or next steps`
 
 This keeps the thread aligned around one explicit goal at a time.
-
-Human Slack feedback can also teach Claude over time.
-If a human says things like:
-- be more human-readable
-- reduce technical jargon
-- keep replies shorter
-- stay in planner mode
-
-the bridge records that as planner coaching in `agents/claude/MEMORY.md`.
 
 ## Active Planning / Development
 
@@ -136,8 +125,6 @@ Claude remains the primary planner for product direction and priority.
 Run one bridge process per bot and share:
 - the same repo
 - the same session store
-- the same planner memory
-- the same goal board
 
 Use:
 - `BRIDGE_MODE=local-roles`
@@ -180,8 +167,6 @@ Optional explicit paths:
 ```env
 BRIDGE_WORKDIR=/Users/sova/Desktop/Projects/job_finder
 PLANNER_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/agents/claude/CONTEXT.md
-PLANNER_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/agents/claude/MEMORY.md
-PLANNER_GOALS_PATH=/Users/sova/Desktop/Projects/job_finder/agents/claude/GOALS.md
 EXECUTOR_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/agents/codex/CONTEXT.md
 SPECIALIST_CONTEXT_PATH=/Users/sova/Desktop/Projects/job_finder/agents/llama/CONTEXT.md
 SPECIALIST_MEMORY_PATH=/Users/sova/Desktop/Projects/job_finder/agents/llama/MEMORY.md
