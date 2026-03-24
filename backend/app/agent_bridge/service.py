@@ -36,7 +36,6 @@ from app.agent_bridge.routing import (
     targets_codex,
     targets_planner,
     targets_specialist,
-    text_targets_planner,
     text_targets_specialist,
 )
 from app.agent_bridge.runtime import (
@@ -348,32 +347,6 @@ class SlackAgentBridge:
                 )
                 return
 
-            if author_role == "executor" and targets_planner(
-                raw_text,
-                text,
-                self.settings,
-                planner_user_id=self.settings.planner_bot_user_id,
-            ):
-                await self._run_planner_via_peer_token(
-                    channel=channel,
-                    thread_ts=thread_ts,
-                    thread_key=thread_key,
-                )
-                return
-
-            if author_role == "specialist" and targets_planner(
-                raw_text,
-                text,
-                self.settings,
-                planner_user_id=self.settings.planner_bot_user_id,
-            ):
-                await self._run_planner_via_peer_token(
-                    channel=channel,
-                    thread_ts=thread_ts,
-                    thread_key=thread_key,
-                )
-                return
-
             if author_role == "executor" and targets_specialist(
                 raw_text,
                 text,
@@ -512,7 +485,7 @@ class SlackAgentBridge:
             return
 
         thread_key = build_thread_key(channel, thread_ts)
-        author = "Claude planner" if planner_event else "Human"
+        author = self.settings.planner_display_name if planner_event else "Human"
         role = "planner" if planner_event else "user"
         self.sessions.upsert(
             thread_key,
@@ -591,14 +564,14 @@ class SlackAgentBridge:
         self.sessions.append(
             thread_key,
             role="planner",
-            author="Claude planner",
+            author=self.settings.planner_display_name,
             content=planner_reply,
         )
         await post_long_message(
             client,
             channel=channel,
             thread_ts=thread_ts,
-            header="Claude",
+            header=self.settings.planner_display_name,
             content=planner_reply,
         )
 
@@ -625,8 +598,12 @@ class SlackAgentBridge:
             cwd=self.workdir,
         )
         executor_reply = inject_known_mentions(executor_reply, self.settings)
-        if self.settings.bridge_mode in {"codex-follower", "local-roles"}:
-            executor_reply = f"{executor_reply}\n\n{planner_review_suffix(self.settings)}"
+        review_suffix = planner_review_suffix(self.settings)
+        if (
+            self.settings.bridge_mode in {"codex-follower", "local-roles"}
+            and review_suffix
+        ):
+            executor_reply = f"{executor_reply}\n\n{review_suffix}"
         self.sessions.append(
             thread_key,
             role="executor",
@@ -640,17 +617,6 @@ class SlackAgentBridge:
             header="Codex",
             content=executor_reply,
         )
-        if (
-            continue_with_planner
-            and self.settings.bridge_role == "executor"
-            and self.settings.planner_post_token
-            and not detect_auto_stop_reason(executor_reply)
-        ):
-            await self._run_planner_via_peer_token(
-                channel=channel,
-                thread_ts=thread_ts,
-                thread_key=thread_key,
-            )
         if (
             self.settings.bridge_role == "executor"
             and self.settings.specialist_post_token
@@ -698,12 +664,6 @@ class SlackAgentBridge:
             header="Codex",
             content=planner_reply,
         )
-        if self.settings.planner_post_token and text_targets_planner(planner_reply, self.settings):
-            await self._run_planner_via_peer_token(
-                channel=channel,
-                thread_ts=thread_ts,
-                thread_key=thread_key,
-            )
         if (
             self.settings.specialist_post_token
             and text_targets_specialist(planner_reply, self.settings)
@@ -752,16 +712,6 @@ class SlackAgentBridge:
             header=self.settings.specialist_display_name,
             content=specialist_reply,
         )
-        if (
-            self.settings.bridge_role == "specialist"
-            and self.settings.planner_post_token
-            and text_targets_planner(specialist_reply, self.settings)
-        ):
-            await self._run_planner_via_peer_token(
-                channel=channel,
-                thread_ts=thread_ts,
-                thread_key=thread_key,
-            )
 
     def _last_role_content(self, thread_key: str, role: str) -> str:
         messages = self.sessions.get(thread_key)

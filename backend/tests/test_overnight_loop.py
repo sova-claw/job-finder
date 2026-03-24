@@ -18,7 +18,7 @@ def test_build_kickoff_message_includes_role_model() -> None:
 
     assert "Night shift started" in message
     assert "Nazar = CEO" in message
-    assert "Claude = Product Owner / PM / BA / Scrum Master" in message
+    assert "Planning = product direction and review" in message
     assert "Codex = Tech Lead / Super Senior executor" in message
 
 

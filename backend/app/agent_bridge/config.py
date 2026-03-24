@@ -13,7 +13,9 @@ class BridgeSettings(BaseSettings):
     slack_app_token: str = ""
     bridge_mode: Literal["orchestrator", "codex-follower", "local-roles"] = "local-roles"
     bridge_role: Literal["planner", "executor", "specialist", "both"] = "both"
-    planner_command: str = "claude -p --permission-mode bypassPermissions --model sonnet"
+    planner_command: str = (
+        "codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}"
+    )
     executor_command: str = (
         "codex exec --dangerously-bypass-approvals-and-sandbox --cd {cwd} -o {output_file}"
     )
@@ -24,7 +26,7 @@ class BridgeSettings(BaseSettings):
         ROOT / ".codex" / "agent_bridge_sessions.json"
     )
     planner_context_path: str = str(
-        ROOT / "agents" / "claude" / "CONTEXT.md"
+        ROOT / "agents" / "planner" / "CONTEXT.md"
     )
     executor_context_path: str = str(
         ROOT / "agents" / "codex" / "CONTEXT.md"
@@ -41,10 +43,10 @@ class BridgeSettings(BaseSettings):
     executor_bot_user_id: str = ""
     specialist_bot_user_id: str = ""
     specialist_post_token: str = ""
-    planner_display_name: str = "Claude"
+    planner_display_name: str = "Planner"
     executor_display_name: str = "Codex"
     specialist_display_name: str = "Llama"
-    planner_trigger_phrase: str = "@Claude"
+    planner_trigger_phrase: str = "#plans"
     codex_trigger_phrase: str = "@Codex"
     specialist_trigger_phrase: str = "@Llama"
     default_agent_channel_id: str = ""

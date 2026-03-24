@@ -43,7 +43,7 @@ def test_thread_session_store_round_trip(tmp_path: Path) -> None:
     store.append(
         thread_key,
         role="planner",
-        author="Claude planner",
+        author="Planner",
         content="Do the scraper first.",
     )
 
@@ -142,20 +142,20 @@ def test_planner_review_suffix_in_local_roles_uses_trigger_phrase() -> None:
     settings = BridgeSettings(
         _env_file=None,
         bridge_mode="local-roles",
-        planner_trigger_phrase="@Claude",
+        planner_trigger_phrase="#plans",
     )
-    assert planner_review_suffix(settings) == "@Claude please review and plan the next step."
+    assert planner_review_suffix(settings) == ""
 
 
 def test_planner_review_suffix_prefers_real_slack_mention() -> None:
     settings = BridgeSettings(
         _env_file=None,
         bridge_mode="local-roles",
-        planner_trigger_phrase="@Claude",
+        planner_trigger_phrase="#plans",
         planner_bot_user_id="UCLAUDE",
     )
 
-    assert planner_review_suffix(settings) == "<@UCLAUDE> please review and plan the next step."
+    assert planner_review_suffix(settings) == ""
 
 
 def test_inject_known_mentions_rewrites_trigger_phrases() -> None:
@@ -164,13 +164,13 @@ def test_inject_known_mentions_rewrites_trigger_phrases() -> None:
         planner_bot_user_id="UCLAUDE",
         executor_bot_user_id="UCODEX",
         specialist_bot_user_id="ULLAMA",
-        planner_trigger_phrase="@Claude",
+        planner_trigger_phrase="#plans",
         codex_trigger_phrase="@Codex",
         specialist_trigger_phrase="@Llama",
     )
 
     rewritten = inject_known_mentions(
-        "@Codex ship it, ask @Claude for review, then ask @Llama for critique.",
+        "@Codex ship it, add a note in #plans, then ask @Llama for critique.",
         settings,
     )
 
@@ -180,8 +180,8 @@ def test_inject_known_mentions_rewrites_trigger_phrases() -> None:
 
 
 def test_contains_trigger_phrase_normalizes_case() -> None:
-    assert contains_trigger_phrase("please ask @claude next", "@Claude") is True
-    assert contains_trigger_phrase("hello there", "@Claude") is False
+    assert contains_trigger_phrase("please update #PLANS next", "#plans") is True
+    assert contains_trigger_phrase("hello there", "#plans") is False
 
 
 def test_extract_ollama_model_supports_api_and_cli_styles() -> None:
@@ -199,9 +199,9 @@ def test_codex_target_detection_supports_mentions_and_plain_text() -> None:
 
 
 def test_planner_target_detection_supports_trigger_phrase() -> None:
-    settings = BridgeSettings(_env_file=None, planner_trigger_phrase="@Claude")
+    settings = BridgeSettings(_env_file=None, planner_trigger_phrase="#plans")
 
-    assert targets_planner("@Claude review this", "@Claude review this", settings) is True
+    assert targets_planner("#plans review this", "#plans review this", settings) is True
     assert targets_planner("review this", "review this", settings) is False
 
 
@@ -242,19 +242,19 @@ def test_should_trigger_executor_for_codex_and_thread_follow_up() -> None:
 
 
 def test_should_trigger_planner_for_phrase_and_thread_follow_up() -> None:
-    settings = BridgeSettings(_env_file=None, planner_trigger_phrase="@Claude")
+    settings = BridgeSettings(_env_file=None, planner_trigger_phrase="#plans")
     history = [
         SessionMessage(
             created_at="2026-03-22T18:01:00+00:00",
-            author="Claude planner",
+            author="Planner",
             role="planner",
             content="Intent...",
         )
     ]
 
     assert should_trigger_planner(
-        raw_text="@Claude refine this",
-        cleaned_text="@Claude refine this",
+        raw_text="#plans refine this",
+        cleaned_text="#plans refine this",
         settings=settings,
         planner_user_id="",
         codex_user_id="",
@@ -364,7 +364,7 @@ def test_event_author_identity_maps_known_bot_users() -> None:
         {"user": "UCLAUDE"},
         settings,
         self_bot_user_id="USELF",
-    ) == ("planner", "Claude planner")
+    ) == ("planner", "Planner note")
     assert event_author_identity(
         {"user": "UCODEX"},
         settings,
@@ -381,7 +381,7 @@ def test_count_role_counts_matching_messages() -> None:
     history = [
         SessionMessage(
             created_at="2026-03-22T18:01:00+00:00",
-            author="Claude planner",
+            author="Planner",
             role="planner",
             content="Goal",
         ),
@@ -453,7 +453,7 @@ def test_should_auto_continue_thread_respects_budget_and_stop_signals() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_executor_and_post_in_dedicated_mode_hands_off_to_planner(
+async def test_run_executor_and_post_in_dedicated_mode_does_not_append_planner_suffix(
     monkeypatch, tmp_path: Path
 ) -> None:
     settings = BridgeSettings(
@@ -465,7 +465,6 @@ async def test_run_executor_and_post_in_dedicated_mode_hands_off_to_planner(
         sessions_path=str(tmp_path / "sessions.json"),
     )
     bridge = SlackAgentBridge(settings)
-    planner_handoff = AsyncMock()
     thread_key = build_thread_key("C123", "171.222")
 
     async def fake_collect_repo_state(cwd: Path) -> str:
@@ -482,7 +481,6 @@ async def test_run_executor_and_post_in_dedicated_mode_hands_off_to_planner(
     monkeypatch.setattr(service_module, "collect_repo_state", fake_collect_repo_state)
     monkeypatch.setattr(service_module, "run_agent_command", fake_run_agent_command)
     monkeypatch.setattr(service_module, "post_long_message", fake_post_long_message)
-    monkeypatch.setattr(bridge, "_run_planner_via_peer_token", planner_handoff)
 
     await bridge._run_executor_and_post(
         client=object(),
@@ -493,14 +491,7 @@ async def test_run_executor_and_post_in_dedicated_mode_hands_off_to_planner(
         continue_with_planner=True,
     )
 
-    planner_handoff.assert_awaited_once_with(
-        channel="C123",
-        thread_ts="171.222",
-        thread_key=thread_key,
-    )
-    assert bridge.sessions.get(thread_key)[-1].content == (
-        "Executor result\n\n@Claude please review and plan the next step."
-    )
+    assert bridge.sessions.get(thread_key)[-1].content == "Executor result"
 
 
 @pytest.mark.asyncio
@@ -516,7 +507,6 @@ async def test_run_executor_and_post_skips_planner_handoff_when_not_continuing(
         sessions_path=str(tmp_path / "sessions.json"),
     )
     bridge = SlackAgentBridge(settings)
-    planner_handoff = AsyncMock()
     thread_key = build_thread_key("C123", "171.222")
 
     async def fake_collect_repo_state(cwd: Path) -> str:
@@ -533,7 +523,6 @@ async def test_run_executor_and_post_skips_planner_handoff_when_not_continuing(
     monkeypatch.setattr(service_module, "collect_repo_state", fake_collect_repo_state)
     monkeypatch.setattr(service_module, "run_agent_command", fake_run_agent_command)
     monkeypatch.setattr(service_module, "post_long_message", fake_post_long_message)
-    monkeypatch.setattr(bridge, "_run_planner_via_peer_token", planner_handoff)
 
     await bridge._run_executor_and_post(
         client=object(),
@@ -544,7 +533,7 @@ async def test_run_executor_and_post_skips_planner_handoff_when_not_continuing(
         continue_with_planner=False,
     )
 
-    planner_handoff.assert_not_awaited()
+    assert bridge.sessions.get(thread_key)[-1].content == "Executor result"
 
 
 @pytest.mark.asyncio
@@ -635,7 +624,6 @@ async def test_run_codex_planner_and_post_can_delegate_to_peers(
         sessions_path=str(tmp_path / "sessions.json"),
     )
     bridge = SlackAgentBridge(settings)
-    planner_handoff = AsyncMock()
     specialist_handoff = AsyncMock()
     thread_key = build_thread_key("C123", "171.222")
 
@@ -646,9 +634,9 @@ async def test_run_codex_planner_and_post_can_delegate_to_peers(
         return (
             "Goal\n- Tighten the implementation plan.\n\n"
             "Technical Plan\n- Split the work into one parser change.\n\n"
-            "Claude Question\n- <@UCLAUDE> confirm the success check.\n\n"
+            "Plan Note\n- add one short decision to #plans if the success check changes.\n\n"
             "Llama Delegation\n- <@ULLAMA> compress the current thread into 3 bullets.\n\n"
-            "Next Check\n- Wait for Claude and Llama, then execute."
+            "Next Check\n- Wait for Llama, then execute."
         )
 
     async def fake_post_long_message(
@@ -659,7 +647,6 @@ async def test_run_codex_planner_and_post_can_delegate_to_peers(
     monkeypatch.setattr(service_module, "collect_repo_state", fake_collect_repo_state)
     monkeypatch.setattr(service_module, "run_agent_command", fake_run_agent_command)
     monkeypatch.setattr(service_module, "post_long_message", fake_post_long_message)
-    monkeypatch.setattr(bridge, "_run_planner_via_peer_token", planner_handoff)
     monkeypatch.setattr(bridge, "_run_specialist_via_peer_token", specialist_handoff)
 
     await bridge._run_codex_planner_and_post(
@@ -670,11 +657,6 @@ async def test_run_codex_planner_and_post_can_delegate_to_peers(
         prompt_source="Plan the next technical step.",
     )
 
-    planner_handoff.assert_awaited_once_with(
-        channel="C123",
-        thread_ts="171.222",
-        thread_key=thread_key,
-    )
     specialist_handoff.assert_awaited_once_with(
         channel="C123",
         thread_ts="171.222",

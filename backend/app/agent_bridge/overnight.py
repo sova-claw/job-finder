@@ -60,7 +60,7 @@ def build_kickoff_message(goal: str, *, max_cycles: int) -> str:
         f"Max cycles: {max_cycles}\n\n"
         "Role model:\n"
         "- Nazar = CEO\n"
-        "- Claude = Product Owner / PM / BA / Scrum Master\n"
+        "- Planning = product direction and review\n"
         "- Codex = Tech Lead / Super Senior executor\n\n"
         "This thread is autonomous until a blocker or decision is needed."
     )
@@ -200,14 +200,14 @@ async def run_overnight_loop(
         sessions.append(
             thread_key,
             role="planner",
-            author="Claude planner",
+            author=settings.planner_display_name,
             content=planner_reply,
         )
         await post_long_message(
             clients.planner,
             channel=channel_id,
             thread_ts=thread_ts,
-            header=f"Claude · cycle {cycle}",
+            header=f"{settings.planner_display_name} · cycle {cycle}",
             content=planner_reply,
         )
 

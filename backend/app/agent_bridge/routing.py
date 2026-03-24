@@ -19,12 +19,8 @@ AUTO_STOP_PHRASES = [
 
 
 def planner_review_suffix(settings: BridgeSettings) -> str:
-    planner_mention = (
-        f"<@{settings.planner_bot_user_id}>"
-        if settings.planner_bot_user_id
-        else settings.planner_trigger_phrase
-    )
-    return f"{planner_mention} please review and plan the next step."
+    del settings
+    return ""
 
 
 def text_targets_planner(text: str, settings: BridgeSettings) -> bool:
@@ -257,13 +253,13 @@ def event_author_identity(
     if user_id and user_id == self_bot_user_id:
         return "self", "Self bot"
     if user_id and user_id == settings.planner_bot_user_id:
-        return "planner", "Claude planner"
+        return "planner", f"{settings.planner_display_name} note"
     if user_id and user_id == settings.executor_bot_user_id:
         return "executor", "Codex executor"
     if user_id and user_id == settings.specialist_bot_user_id:
         return "specialist", f"{settings.specialist_display_name} specialist"
     if username_lower == settings.planner_display_name.strip().lower():
-        return "planner", "Claude planner"
+        return "planner", f"{settings.planner_display_name} note"
     if username_lower == settings.executor_display_name.strip().lower():
         return "executor", "Codex executor"
     if username_lower == settings.specialist_display_name.strip().lower():
