@@ -549,30 +549,95 @@ def build_plan_update_payload(
 ) -> dict[str, object]:
     emoji = _plan_status_emoji(status)
     status_label = _plan_status_label(status)
+    timestamp = datetime.now().strftime("%H:%M")
+    title_text = title.strip()
+    message_text = message.strip()
+    next_text = next_step.strip() if next_step and next_step.strip() else None
+    link_text = link.strip() if link and link.strip() else None
+
     if threaded:
-        lines = [f"{emoji} *{status_label}:* {message.strip()}"]
-    else:
-        header = f"{emoji} *{title.strip()}*"
-        if story_points:
-            header += f"  ·  `{story_points} SP`"
-        lines = [header, message.strip()]
-    if link and link.strip():
-        lines.append(f"🔗 *Link:* {link.strip()}")
-    if next_step and next_step.strip():
-        lines.append(f"➡️ *Next:* {next_step.strip()}")
-    text = "\n".join(lines)
-    return {
-        "text": (
-            f"{emoji} {status_label}: {message.strip()}"
-            if threaded
-            else f"{emoji} {title.strip()} · {status_label}"
-        ),
-        "blocks": [
+        blocks: list[dict[str, object]] = [
             {
                 "type": "section",
-                "text": {"type": "mrkdwn", "text": text},
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"{emoji} *{status_label}*\n{message_text}",
+                },
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": f"{status_label} · {timestamp}"},
+                ],
+            },
+        ]
+        if next_text:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"➡️ *Next:* {next_text}"},
+                }
+            )
+        if link_text:
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Open link"},
+                            "url": link_text,
+                        }
+                    ],
+                }
+            )
+        return {
+            "text": f"{emoji} {status_label}: {message_text}",
+            "blocks": blocks,
+        }
+
+    context_parts = [f"{status_label} · {timestamp}"]
+    if story_points:
+        context_parts.insert(0, f"`{story_points} SP`")
+
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"{emoji} {title_text}"},
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": message_text},
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": "  ·  ".join(context_parts)}],
+        },
+    ]
+    if next_text:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"➡️ *Next:* {next_text}"},
             }
-        ],
+        )
+    if link_text:
+        blocks.append(
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Open link"},
+                        "url": link_text,
+                    }
+                ],
+            }
+        )
+
+    return {
+        "text": f"{emoji} {title_text} · {status_label}",
+        "blocks": blocks,
     }
 
 
