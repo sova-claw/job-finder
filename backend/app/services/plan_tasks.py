@@ -120,6 +120,7 @@ async def start_plan_task_from_selection(
     story_points: int | None = None,
     default_thread_ts: str | None = None,
 ) -> SlackPlanUpdateSummary:
+    del default_thread_ts
     normalized_title = normalize_plan_title(title)
     estimate = estimate_for_story_points(story_points)
     eta_text = estimate_finish_time(story_points)
@@ -128,7 +129,7 @@ async def start_plan_task_from_selection(
         if estimate
         else "In progress."
     )
-    started_next_step = "First update will land in this thread."
+    started_next_step = "Use this thread for updates and questions."
     task = await save_plan_task(
         session,
         title=normalized_title,
@@ -145,7 +146,7 @@ async def start_plan_task_from_selection(
         eta_text=eta_text,
         next_step=started_next_step,
         task_id=task.id,
-        thread_ts=task.slack_thread_ts or default_thread_ts,
+        thread_ts=None,
     )
     await attach_plan_task_slack_post(
         session,
