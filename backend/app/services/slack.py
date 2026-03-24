@@ -710,8 +710,9 @@ def build_plan_update_payload(
     if threaded:
         blocks: list[dict[str, object]] = [
             _plan_header_block(f"{emoji}  {status_heading}"),
+            _plan_task_line(title=title_text),
             _plan_note_section(message_text),
-            _plan_meta_context(timestamp=timestamp),
+            _plan_meta_context(timestamp=timestamp, story_points=story_points),
         ]
         if next_text:
             blocks.append(
@@ -724,7 +725,7 @@ def build_plan_update_payload(
             "attachments": _attachment(
                 color=color,
                 blocks=blocks,
-                fallback=f"{emoji} {status_label}: {message_text}",
+                fallback=f"{emoji} {title_text} · {status_label}",
             ),
         }
 

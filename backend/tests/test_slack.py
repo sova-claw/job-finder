@@ -177,18 +177,22 @@ def test_build_plan_update_payload_is_shorter_inside_thread() -> None:
         status="done",
         title="StartupIndex source",
         message="Confirmed it has company pages and apply paths.",
+        story_points=3,
         next_step="Wire the importer.",
         threaded=True,
     )
 
     attachment = payload["attachments"][0]
     assert attachment["color"] == "#1D9E75"
-    assert attachment["fallback"] == "✅ Done: Confirmed it has company pages and apply paths."
+    assert attachment["fallback"] == "✅ StartupIndex source · Done"
     blocks = attachment["blocks"]
     assert blocks[0]["text"]["text"] == "✅  Task complete"
-    assert blocks[1]["text"]["text"] == "Confirmed it has company pages and apply paths."
-    assert blocks[2]["elements"][0]["text"].startswith("🕐 ")
-    assert blocks[3]["elements"][0]["text"] == "➡️ Next: Wire the importer."
+    assert blocks[1]["text"]["text"] == "*Task:*  `StartupIndex source`"
+    assert blocks[2]["text"]["text"] == "Confirmed it has company pages and apply paths."
+    meta = [item["text"] for item in blocks[3]["elements"]]
+    assert meta[0] == "◦ 3 SP"
+    assert meta[1].startswith("🕐 ")
+    assert blocks[4]["elements"][0]["text"] == "➡️ Next: Wire the importer."
 
 
 def test_build_plan_update_payload_info_card_is_simple() -> None:
@@ -659,7 +663,7 @@ async def test_post_plan_update_uses_existing_thread(monkeypatch) -> None:
     assert posted[0][2] == "111.222"
     assert (
         posted[0][1]["attachments"][0]["fallback"]
-        == "🔵 Update: Found company pages. Checking role pages now."
+        == "🔵 StartupIndex source · Update"
     )
     assert summary.thread_ts == "111.222"
     assert summary.post_ts == "333.444"

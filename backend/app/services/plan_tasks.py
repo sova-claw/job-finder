@@ -20,6 +20,18 @@ def normalize_plan_title(title: str) -> str:
     return words[:71].rstrip() + "…"
 
 
+def estimate_for_story_points(story_points: int | None) -> str | None:
+    if story_points is None:
+        return None
+    mapping = {
+        1: "~10 min",
+        2: "~15 min",
+        3: "~25 min",
+        5: "~45 min",
+    }
+    return mapping.get(story_points, "~1h")
+
+
 async def save_plan_task(
     session: AsyncSession,
     *,
@@ -95,18 +107,23 @@ async def start_plan_task_from_selection(
     default_thread_ts: str | None = None,
 ) -> SlackPlanUpdateSummary:
     normalized_title = normalize_plan_title(title)
-    started_message = f"Started: {normalized_title}."
-    started_next_step = f"First update on {normalized_title} will land here."
+    estimate = estimate_for_story_points(story_points)
+    started_message = (
+        f"In progress · est. {estimate}."
+        if estimate
+        else "In progress."
+    )
+    started_next_step = "First update will land in this thread."
     task = await save_plan_task(
         session,
         title=normalized_title,
-        status="started",
+        status="progress",
         story_points=story_points,
         message=started_message,
         next_step=started_next_step,
     )
     summary = await post_plan_update(
-        status="started",
+        status="progress",
         title=task.title,
         message=started_message,
         story_points=story_points,
