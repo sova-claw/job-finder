@@ -145,6 +145,19 @@ def test_build_scraper_schedule_payload_contains_cadence_and_next_run() -> None:
     assert "Not scheduled" in body
 
 
+def test_build_plan_update_payload_is_short_and_structured() -> None:
+    payload = slack.build_plan_update_payload(
+        status="started",
+        message="StartupIndex discovery source",
+        next_step="Choose the clean integration path",
+    )
+
+    assert payload["text"] == "🟡 Started: StartupIndex discovery source"
+    body = payload["blocks"][0]["text"]["text"]
+    assert "🟡 *Started:* StartupIndex discovery source" in body
+    assert "➡️ *Next:* Choose the clean integration path" in body
+
+
 def test_fit_signal_has_fallbacks_for_score_ranges() -> None:
     assert slack._fit_signal(_job(match_score=82)) == "OK strong"
     assert slack._fit_signal(_job(match_score=60)) == "! partial"
@@ -512,3 +525,34 @@ async def test_post_scraper_schedule_snapshot_creates_channel_and_posts(monkeypa
     assert [name for name, _ in calls] == ["list", "join", "post"]
     assert calls[0][1] == {"types": "public_channel"}
     assert calls[2][1]["payload"]["text"] == "🕒 Scraper schedule"
+
+
+@pytest.mark.asyncio
+async def test_post_plan_update_posts_to_plans(monkeypatch) -> None:
+    monkeypatch.setattr(slack.settings, "slack_bot_token", "xoxb-test")
+
+    posted: list[tuple[str, dict[str, object]]] = []
+
+    async def fake_post_to_channel(
+        _client,
+        channel_name: str,
+        payload: dict[str, object],
+        *,
+        cache: dict[str, str],
+    ) -> None:
+        del _client, cache
+        posted.append((channel_name, payload))
+
+    monkeypatch.setattr(slack, "_post_to_channel", fake_post_to_channel)
+
+    summary = await slack.post_plan_update(
+        status="done",
+        message="Slack formatting polished",
+        next_step="StartupIndex discovery source",
+        client=object(),  # type: ignore[arg-type]
+    )
+
+    assert summary.channel == "#plans"
+    assert summary.status == "done"
+    assert posted[0][0] == "#plans"
+    assert posted[0][1]["text"] == "✅ Done: Slack formatting polished"

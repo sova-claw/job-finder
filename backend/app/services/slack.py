@@ -61,6 +61,13 @@ class ScraperScheduleSummary:
 
 
 @dataclass(slots=True)
+class SlackPlanUpdateSummary:
+    channel: str
+    status: str
+    posted_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass(slots=True)
 class JobSlackChannelSummary:
     job_id: str
     channel_id: str
@@ -167,6 +174,18 @@ def _fit_emoji(job: Job) -> str:
     if score >= 55:
         return "🟡"
     return "⚪"
+
+
+def _plan_status_emoji(status: str) -> str:
+    normalized = status.strip().lower()
+    mapping = {
+        "started": "🟡",
+        "done": "✅",
+        "next": "➡️",
+        "blocked": "⛔",
+        "info": "🔔",
+    }
+    return mapping.get(normalized, "🔔")
 
 
 def _slugify_channel_part(value: str | None, *, fallback: str) -> str:
@@ -495,6 +514,29 @@ def build_scraper_schedule_payload(entries: list[ScraperScheduleEntry]) -> dict[
                     "text": schedule,
                 },
             },
+        ],
+    }
+
+
+def build_plan_update_payload(
+    *,
+    status: str,
+    message: str,
+    next_step: str | None = None,
+) -> dict[str, object]:
+    emoji = _plan_status_emoji(status)
+    title = status.strip().capitalize() or "Update"
+    lines = [f"{emoji} *{title}:* {message.strip()}"]
+    if next_step and next_step.strip():
+        lines.append(f"➡️ *Next:* {next_step.strip()}")
+    text = "\n".join(lines)
+    return {
+        "text": f"{emoji} {title}: {message.strip()}",
+        "blocks": [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": text},
+            }
         ],
     }
 
@@ -834,3 +876,23 @@ async def post_scraper_schedule_snapshot(
         **build_scraper_schedule_payload(entries),
     )
     return ScraperScheduleSummary(channel=channel_name, count_jobs=len(entries))
+
+
+async def post_plan_update(
+    *,
+    status: str,
+    message: str,
+    next_step: str | None = None,
+    client: AsyncWebClient | None = None,
+) -> SlackPlanUpdateSummary:
+    if not settings.slack_bot_token:
+        raise RuntimeError("SLACK_BOT_TOKEN is required to post plan updates.")
+
+    slack_client = client or AsyncWebClient(token=settings.slack_bot_token)
+    await _post_to_channel(
+        slack_client,
+        "#plans",
+        build_plan_update_payload(status=status, message=message, next_step=next_step),
+        cache={},
+    )
+    return SlackPlanUpdateSummary(channel="#plans", status=status)

@@ -23,3 +23,16 @@ class ScraperScheduleSnapshotResponse(BaseModel):
     channel: str
     count_jobs: int
     posted_at: datetime
+
+
+class SlackPlanUpdateRequest(BaseModel):
+    status: str
+    message: str
+    next_step: str | None = None
+
+
+class SlackPlanUpdateResponse(BaseModel):
+    source: str = "Slack Plans"
+    channel: str
+    status: str
+    posted_at: datetime

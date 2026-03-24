@@ -6,9 +6,15 @@ from app.schemas.alerts import (
     ScraperScheduleSnapshotResponse,
     SlackDispatchResponse,
     SlackInboxSnapshotResponse,
+    SlackPlanUpdateRequest,
+    SlackPlanUpdateResponse,
 )
 from app.scraper.scheduler import scheduler_service
-from app.services.slack import dispatch_new_jobs_to_slack, post_jobs_inbox_snapshot
+from app.services.slack import (
+    dispatch_new_jobs_to_slack,
+    post_jobs_inbox_snapshot,
+    post_plan_update,
+)
 
 router = APIRouter(tags=["alerts"])
 
@@ -69,5 +75,26 @@ async def send_scraper_schedule_snapshot() -> ScraperScheduleSnapshotResponse:
     return ScraperScheduleSnapshotResponse(
         channel=summary.channel,
         count_jobs=summary.count_jobs,
+        posted_at=summary.posted_at,
+    )
+
+
+@router.post("/alerts/slack/plans", response_model=SlackPlanUpdateResponse)
+async def send_plan_update(payload: SlackPlanUpdateRequest) -> SlackPlanUpdateResponse:
+    try:
+        summary = await post_plan_update(
+            status=payload.status,
+            message=payload.message,
+            next_step=payload.next_step,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    return SlackPlanUpdateResponse(
+        channel=summary.channel,
+        status=summary.status,
         posted_at=summary.posted_at,
     )

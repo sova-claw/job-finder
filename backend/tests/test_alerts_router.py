@@ -5,7 +5,12 @@ from fastapi.testclient import TestClient
 
 from app.database import get_session
 from app.routers import alerts as alerts_router_module
-from app.services.slack import ScraperScheduleSummary, SlackDispatchSummary, SlackInboxSummary
+from app.services.slack import (
+    ScraperScheduleSummary,
+    SlackDispatchSummary,
+    SlackInboxSummary,
+    SlackPlanUpdateSummary,
+)
 from main import app
 
 
@@ -107,5 +112,50 @@ def test_send_scraper_schedule_route_handles_missing_config(monkeypatch) -> None
 
     client = TestClient(app)
     response = client.post("/api/alerts/slack/scraper-schedule")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Slack is not configured"
+
+
+def test_send_plan_update_route_returns_summary(monkeypatch) -> None:
+    async def fake_post_plan_update(*, status: str, message: str, next_step: str | None = None):
+        assert status == "started"
+        assert message == "StartupIndex discovery source"
+        assert next_step == "Choose the clean integration path"
+        return SlackPlanUpdateSummary(
+            channel="#plans",
+            status=status,
+            posted_at=datetime.now(UTC),
+        )
+
+    monkeypatch.setattr(alerts_router_module, "post_plan_update", fake_post_plan_update)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/alerts/slack/plans",
+        json={
+            "status": "started",
+            "message": "StartupIndex discovery source",
+            "next_step": "Choose the clean integration path",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "Slack Plans"
+    assert payload["channel"] == "#plans"
+    assert payload["status"] == "started"
+
+
+def test_send_plan_update_route_handles_missing_config(monkeypatch) -> None:
+    async def fake_post_plan_update(*, status: str, message: str, next_step: str | None = None):
+        del status, message, next_step
+        raise RuntimeError("Slack is not configured")
+
+    monkeypatch.setattr(alerts_router_module, "post_plan_update", fake_post_plan_update)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/alerts/slack/plans",
+        json={"status": "done", "message": "Slack formatting polished"},
+    )
     assert response.status_code == 503
     assert response.json()["detail"] == "Slack is not configured"
