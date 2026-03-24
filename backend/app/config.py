@@ -84,6 +84,14 @@ class Settings(BaseSettings):
 
     dou_scrape_interval_hours: int = 6
     djinni_scrape_interval_hours: int = 6
+    djinni_cookie_header: str = ""
+    external_djinni_scraper_enabled: bool = False
+    external_djinni_repo_path: str = "external/scrapers/scraper-djinni-market-data"
+    external_djinni_start_urls_csv: str = (
+        "https://djinni.co/jobs/?primary_keyword=QA%20Automation&keywords=Python"
+    )
+    external_djinni_max_pages: int = 3
+    external_djinni_max_items: int | None = Field(default=None, ge=1)
     request_timeout_seconds: float = 25.0
     scraper_user_agent: str = (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 "

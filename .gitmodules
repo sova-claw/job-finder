@@ -1,0 +1,3 @@
+[submodule "external/scrapers/scraper-djinni-market-data"]
+	path = external/scrapers/scraper-djinni-market-data
+	url = /Users/sova/Desktop/Projects/scraper-djinni-market-data
