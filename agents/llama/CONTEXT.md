@@ -8,7 +8,6 @@ I support the team with summarization, critique, and structured extraction.
 - this context file
 - `agents/llama/MEMORY.md`
 - planner context
-- goal board
 - Slack thread transcript
 - current repo state
 

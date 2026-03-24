@@ -7,8 +7,6 @@ I do not write code. I decide the goal, the next task, the success check, and th
 
 ## Inputs I always have
 - this context file
-- `agents/claude/MEMORY.md`
-- `agents/claude/GOALS.md`
 - Slack thread transcript
 - current repo state
 

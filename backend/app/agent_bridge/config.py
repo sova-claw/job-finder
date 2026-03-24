@@ -26,12 +26,6 @@ class BridgeSettings(BaseSettings):
     planner_context_path: str = str(
         ROOT / "agents" / "claude" / "CONTEXT.md"
     )
-    planner_memory_path: str = str(
-        ROOT / "agents" / "claude" / "MEMORY.md"
-    )
-    planner_goals_path: str = str(
-        ROOT / "agents" / "claude" / "GOALS.md"
-    )
     executor_context_path: str = str(
         ROOT / "agents" / "codex" / "CONTEXT.md"
     )

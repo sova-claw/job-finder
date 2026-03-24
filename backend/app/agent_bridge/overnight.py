@@ -180,12 +180,6 @@ async def run_overnight_loop(
     cycles_completed = 0
     stopped_reason = "max_cycles_reached"
 
-    from app.agent_bridge.goal_memory import GoalBoardStore
-    from app.agent_bridge.planner_memory import PlannerMemoryStore
-
-    planner_memory = PlannerMemoryStore(settings.planner_memory_path)
-    goal_board = GoalBoardStore(settings.planner_goals_path)
-
     for cycle in range(1, max_cycles + 1):
         repo_state = await collect_repo_state(workdir)
         planner_result = await run_timed_agent_command(
@@ -207,8 +201,6 @@ async def run_overnight_loop(
             author="Claude planner",
             content=planner_reply,
         )
-        planner_memory.record_planner_reply(thread_key, planner_reply)
-        goal_board.record_planner_reply(thread_key, planner_reply)
         await post_long_message(
             clients.planner,
             channel=channel_id,
@@ -246,8 +238,6 @@ async def run_overnight_loop(
             author="Codex executor",
             content=executor_reply,
         )
-        planner_memory.record_executor_reply(thread_key, executor_reply)
-        goal_board.record_executor_reply(thread_key, executor_reply)
         await post_long_message(
             clients.executor,
             channel=channel_id,

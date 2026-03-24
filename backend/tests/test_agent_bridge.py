@@ -19,7 +19,6 @@ from app.agent_bridge.service import (
     extract_ollama_model,
     inject_known_mentions,
     looks_like_conversational_planner_request,
-    looks_like_planner_coaching,
     looks_like_planning_request,
     looks_like_status_request,
     normalize_event_payload,
@@ -82,22 +81,16 @@ def test_thread_session_store_upsert_updates_existing_message(tmp_path: Path) ->
 
 def test_prompt_builders_include_context(tmp_path: Path) -> None:
     context = tmp_path / "PLANNER_CONTEXT.md"
-    memory = tmp_path / "PLANNER_MEMORY.md"
-    goals = tmp_path / "GOALS.md"
     executor_context = tmp_path / "CODEX_CONTEXT.md"
     specialist_context = tmp_path / "LLAMA_CONTEXT.md"
     specialist_memory = tmp_path / "LLAMA_MEMORY.md"
     context.write_text("stable context")
-    memory.write_text("rolling memory")
-    goals.write_text("goal board")
     executor_context.write_text("executor context")
     specialist_context.write_text("specialist context")
     specialist_memory.write_text("specialist memory")
     settings = BridgeSettings(
         _env_file=None,
         planner_context_path=str(context),
-        planner_memory_path=str(memory),
-        planner_goals_path=str(goals),
         executor_context_path=str(executor_context),
         specialist_context_path=str(specialist_context),
         specialist_memory_path=str(specialist_memory),
@@ -137,8 +130,6 @@ def test_prompt_builders_include_context(tmp_path: Path) -> None:
 
     assert "stable context" in planner_prompt
     assert "Reply like a strong human teammate first." in conversation_prompt
-    assert "rolling memory" in planner_prompt
-    assert "goal board" in planner_prompt
     assert "branch main" in executor_prompt
     assert "executor context" in executor_prompt
     assert "Planner handoff" in executor_prompt
@@ -423,41 +414,6 @@ def test_detect_auto_stop_reason_and_status_request_helpers() -> None:
     assert looks_like_conversational_planner_request("Hello, what is our roadmap?") is True
     assert looks_like_conversational_planner_request("talk with me as human first") is True
     assert looks_like_conversational_planner_request("plan the next technical step") is False
-    assert looks_like_planner_coaching("Claude is too technical and should be shorter.") is True
-    assert looks_like_planner_coaching("Claude, talk with me as human first.") is True
-    assert looks_like_planner_coaching("please ship the parser") is False
-
-
-def test_human_planner_feedback_is_recorded_from_thread_context(tmp_path: Path) -> None:
-    settings = BridgeSettings(
-        _env_file=None,
-        planner_trigger_phrase="@Claude",
-        slack_bot_token="xoxb-test",
-        planner_memory_path=str(tmp_path / "PLANNER_MEMORY.md"),
-        sessions_path=str(tmp_path / "sessions.json"),
-    )
-    bridge = SlackAgentBridge(settings)
-    thread_key = build_thread_key("C123", "171.222")
-    bridge.sessions.append(
-        thread_key,
-        role="planner",
-        author="Claude planner",
-        content="Goal\n- Keep the loop stable.",
-    )
-    history = bridge.sessions.get(thread_key)
-
-    bridge._maybe_record_planner_feedback(
-        thread_key=thread_key,
-        raw_text="Claude is too technical and should be shorter.",
-        cleaned_text="Claude is too technical and should be shorter.",
-        author_role="user",
-        history=history,
-    )
-
-    content = Path(settings.planner_memory_path).read_text(encoding="utf-8")
-
-    assert "Reduce technical jargon in planner replies." in content
-    assert "Keep planner replies shorter." in content
 
 
 def test_should_auto_continue_thread_respects_budget_and_stop_signals() -> None:
@@ -603,7 +559,6 @@ async def test_planner_dedicated_role_accepts_executor_handoff(
         planner_bot_user_id="UCLAUDE",
         executor_bot_user_id="UCODEX",
         sessions_path=str(tmp_path / "sessions.json"),
-        planner_memory_path=str(tmp_path / "PLANNER_MEMORY.md"),
     )
     bridge = SlackAgentBridge(settings)
     bridge.bot_user_id = "UCLAUDE"

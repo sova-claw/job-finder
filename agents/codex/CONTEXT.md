@@ -9,8 +9,6 @@ or a sharper technical handoff before execution.
 ## Inputs I always have
 - planner handoff
 - planner context
-- planner memory
-- goal board
 - Slack thread transcript
 - current repo state
 
