@@ -15,7 +15,11 @@ from app.schemas.alerts import (
     SlackPlanUpdateResponse,
 )
 from app.scraper.scheduler import scheduler_service
-from app.services.plan_tasks import attach_plan_task_slack_post, save_plan_task
+from app.services.plan_tasks import (
+    attach_plan_task_slack_post,
+    save_plan_task,
+    start_plan_task_from_selection,
+)
 from app.services.slack import (
     dispatch_new_jobs_to_slack,
     post_jobs_inbox_snapshot,
@@ -180,28 +184,10 @@ async def handle_slack_interactivity(
     story_points = int(story_points_raw) if story_points_raw is not None else None
 
     try:
-        task = await save_plan_task(
+        await start_plan_task_from_selection(
             session,
             title=title,
-            status="started",
             story_points=story_points,
-            message="Picked from task list.",
-            next_step="Start the work.",
-        )
-        summary = await post_plan_update(
-            status="started",
-            title=task.title,
-            message="Picked from task list.",
-            story_points=story_points,
-            next_step="Start the work.",
-            task_id=task.id,
-            thread_ts=task.slack_thread_ts,
-        )
-        await attach_plan_task_slack_post(
-            session,
-            task_id=task.id,
-            thread_ts=summary.thread_ts or "",
-            post_ts=summary.post_ts or "",
         )
     except ValueError as exc:
         raise HTTPException(

@@ -292,71 +292,30 @@ def test_slack_interactivity_starts_selected_task(monkeypatch) -> None:
     async def _override_session() -> AsyncGenerator[_FakeSession, None]:
         yield _FakeSession()
 
-    async def fake_save_plan_task(
+    async def fake_start_plan_task_from_selection(
         _session,
         *,
         title: str,
-        status: str,
         story_points: int | None = None,
-        message: str | None = None,
-        link: str | None = None,
-        next_step: str | None = None,
+        default_thread_ts: str | None = None,
     ):
         assert title == "StartupIndex source"
-        assert status == "started"
         assert story_points == 3
-        assert message == "Picked from task list."
-        assert link is None
-        assert next_step == "Start the work."
-        return _FakeTask(task_id="task-1", title=title)
-
-    async def fake_attach_plan_task_slack_post(
-        _session,
-        *,
-        task_id: str,
-        thread_ts: str,
-        post_ts: str,
-    ):
-        assert task_id == "task-1"
-        assert thread_ts == "111.222"
-        assert post_ts == "111.222"
-        return _FakeTask(task_id=task_id, title="StartupIndex source", slack_thread_ts=thread_ts)
-
-    async def fake_post_plan_update(
-        *,
-        status: str,
-        title: str,
-        message: str,
-        story_points: int | None = None,
-        next_step: str | None = None,
-        link: str | None = None,
-        task_id: str | None = None,
-        thread_ts: str | None = None,
-    ):
-        assert status == "started"
-        assert title == "StartupIndex source"
-        assert message == "Picked from task list."
-        assert story_points == 3
-        assert next_step == "Start the work."
-        assert link is None
-        assert task_id == "task-1"
-        assert thread_ts is None
+        assert default_thread_ts is None
         return SlackPlanUpdateSummary(
             channel="#plans",
-            status=status,
-            task_id=task_id,
+            status="started",
+            task_id="task-1",
             thread_ts="111.222",
             post_ts="111.222",
             posted_at=datetime.now(UTC),
         )
 
-    monkeypatch.setattr(alerts_router_module, "save_plan_task", fake_save_plan_task)
     monkeypatch.setattr(
         alerts_router_module,
-        "attach_plan_task_slack_post",
-        fake_attach_plan_task_slack_post,
+        "start_plan_task_from_selection",
+        fake_start_plan_task_from_selection,
     )
-    monkeypatch.setattr(alerts_router_module, "post_plan_update", fake_post_plan_update)
     app.dependency_overrides[get_session] = _override_session
     client = TestClient(app)
     try:

@@ -663,3 +663,52 @@ async def test_run_codex_planner_and_post_can_delegate_to_peers(
         thread_key=thread_key,
     )
     assert bridge.sessions.get(thread_key)[-1].author == "Codex planner mode"
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_pick_action_starts_selected_task(
+    monkeypatch, tmp_path: Path
+) -> None:
+    settings = BridgeSettings(
+        _env_file=None,
+        slack_bot_token="xoxb-test",
+        slack_app_token="xapp-test",
+        sessions_path=str(tmp_path / "sessions.json"),
+    )
+    bridge = SlackAgentBridge(settings)
+    started = AsyncMock()
+    session = object()
+
+    class _FakeSessionContext:
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    monkeypatch.setattr(service_module, "SessionLocal", _FakeSessionContext)
+    monkeypatch.setattr(
+        service_module,
+        "start_plan_task_from_selection",
+        started,
+    )
+
+    await bridge._handle_plan_pick_action(
+        {
+            "actions": [
+                {
+                    "action_id": "plan_pick_task_0",
+                    "value": '{"title":"Jobs inbox cleanup","story_points":2}',
+                }
+            ],
+            "message": {"ts": "171.222"},
+        },
+        logger=AsyncMock(),
+    )
+
+    started.assert_awaited_once_with(
+        session,
+        title="Jobs inbox cleanup",
+        story_points=2,
+        default_thread_ts="171.222",
+    )

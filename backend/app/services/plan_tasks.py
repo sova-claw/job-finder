@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.plan_task import PlanTask
 from app.schemas.plan_task import PlanTaskResponse
+from app.services.slack import SlackPlanUpdateSummary, post_plan_update
 
 
 def normalize_plan_title(title: str) -> str:
@@ -84,6 +85,39 @@ async def attach_plan_task_slack_post(
     await session.commit()
     await session.refresh(task)
     return task
+
+
+async def start_plan_task_from_selection(
+    session: AsyncSession,
+    *,
+    title: str,
+    story_points: int | None = None,
+    default_thread_ts: str | None = None,
+) -> SlackPlanUpdateSummary:
+    task = await save_plan_task(
+        session,
+        title=title,
+        status="started",
+        story_points=story_points,
+        message="Picked from task list.",
+        next_step="Start the work.",
+    )
+    summary = await post_plan_update(
+        status="started",
+        title=task.title,
+        message="Picked from task list.",
+        story_points=story_points,
+        next_step="Start the work.",
+        task_id=task.id,
+        thread_ts=task.slack_thread_ts or default_thread_ts,
+    )
+    await attach_plan_task_slack_post(
+        session,
+        task_id=task.id,
+        thread_ts=summary.thread_ts or "",
+        post_ts=summary.post_ts or "",
+    )
+    return summary
 
 
 async def list_plan_tasks(

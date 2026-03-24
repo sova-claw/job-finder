@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 import time
 from pathlib import Path
 
@@ -47,6 +49,8 @@ from app.agent_bridge.runtime import (
 from app.agent_bridge.session_store import ThreadSessionStore
 from app.agent_bridge.slack_io import post_long_message
 from app.agent_bridge.specialist_memory import SpecialistMemoryStore
+from app.database import SessionLocal
+from app.services.plan_tasks import start_plan_task_from_selection
 
 __all__ = [
     "SlackAgentBridge",
@@ -109,6 +113,11 @@ class SlackAgentBridge:
         @self.app.event("message")
         async def handle_message(body: dict, client: AsyncWebClient, logger) -> None:
             await self._handle_event(body.get("event", {}), client=client, logger=logger)
+
+        @self.app.action(re.compile(r"^plan_pick_task_\d+$"))
+        async def handle_plan_pick_action(ack, body: dict, logger) -> None:
+            await ack()
+            await self._handle_plan_pick_action(body, logger=logger)
 
     async def _handle_event(self, event: dict, *, client: AsyncWebClient, logger) -> None:
         normalized = normalize_event_payload(event)
@@ -735,6 +744,34 @@ class SlackAgentBridge:
     @staticmethod
     def _clean_text(text: str) -> str:
         return " ".join(part for part in text.split() if not part.startswith("<@"))
+
+    async def _handle_plan_pick_action(self, body: dict, *, logger) -> None:
+        action = (body.get("actions") or [{}])[0]
+        value = str(action.get("value", "")).strip()
+        if not value:
+            return
+
+        try:
+            payload = json.loads(value)
+        except json.JSONDecodeError:
+            logger.warning("Invalid plan task button payload: %s", value)
+            return
+
+        title = str(payload.get("title", "")).strip()
+        if not title:
+            return
+
+        story_points_raw = payload.get("story_points")
+        story_points = int(story_points_raw) if story_points_raw is not None else None
+        message_ts = str((body.get("message") or {}).get("ts", "")).strip() or None
+
+        async with SessionLocal() as session:
+            await start_plan_task_from_selection(
+                session,
+                title=title,
+                story_points=story_points,
+                default_thread_ts=message_ts,
+            )
 
     async def run(self) -> None:
         if not self.settings.slack_bot_token or not self.settings.slack_app_token:
