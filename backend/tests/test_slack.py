@@ -191,6 +191,23 @@ def test_build_plan_update_payload_is_shorter_inside_thread() -> None:
     assert blocks[3]["elements"][0]["text"] == "➡️ Next: Wire the importer."
 
 
+def test_build_plan_update_payload_info_card_is_simple() -> None:
+    payload = slack.build_plan_update_payload(
+        status="info",
+        title="Task list",
+        message="1. Djinni auth scrape\n2. StartupIndex source",
+        next_step="Pick one and start.",
+    )
+
+    assert payload["text"] == "🔔 Task list"
+    attachment = payload["attachments"][0]
+    blocks = attachment["blocks"]
+    assert blocks[0]["text"]["text"] == "🔔  Task list"
+    assert blocks[1]["text"]["text"] == "1. Djinni auth scrape\n2. StartupIndex source"
+    assert blocks[2]["elements"][0]["text"].startswith("🕐 ")
+    assert blocks[3]["elements"][0]["text"] == "➡️ Next: Pick one and start."
+
+
 def test_fit_signal_has_fallbacks_for_score_ranges() -> None:
     assert slack._fit_signal(_job(match_score=82)) == "OK strong"
     assert slack._fit_signal(_job(match_score=60)) == "! partial"

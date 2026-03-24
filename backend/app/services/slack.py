@@ -646,6 +646,24 @@ def build_plan_update_payload(
     next_text = next_step.strip() if next_step and next_step.strip() else None
     link_text = link.strip() if link and link.strip() else None
 
+    if not threaded and status.strip().lower() == "info":
+        blocks = [
+            _plan_header_block(f"{emoji}  {title_text}"),
+            _plan_note_section(message_text),
+            _plan_meta_context(timestamp=timestamp, story_points=story_points),
+        ]
+        if next_text:
+            blocks.append(
+                {
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": f"➡️ Next: {next_text}"}],
+                }
+            )
+        return {
+            "text": f"{emoji} {title_text}",
+            "attachments": _attachment(color=color, blocks=blocks),
+        }
+
     if threaded:
         blocks: list[dict[str, object]] = [
             _plan_header_block(f"{emoji}  {status_heading}"),
