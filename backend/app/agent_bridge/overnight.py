@@ -7,15 +7,17 @@ from pathlib import Path
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.agent_bridge.config import BridgeSettings
-from app.agent_bridge.service import (
+from app.agent_bridge.prompting import (
     build_executor_prompt,
     build_planner_prompt,
     build_thread_key,
+)
+from app.agent_bridge.runtime import (
     collect_repo_state,
-    post_long_message,
     run_agent_command,
 )
 from app.agent_bridge.session_store import ThreadSessionStore
+from app.agent_bridge.slack_io import post_long_message
 
 STOP_PHRASES = [
     "@nazar [decision needed]",

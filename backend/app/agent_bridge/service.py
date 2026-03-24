@@ -1,702 +1,81 @@
 from __future__ import annotations
 
-import asyncio
-import hashlib
-import os
-import shlex
-import tempfile
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
-import httpx
 from slack_bolt.adapter.socket_mode.aiohttp import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.agent_bridge.config import BridgeSettings
-from app.agent_bridge.session_store import SessionMessage, ThreadSessionStore
+from app.agent_bridge.prompting import (
+    AUTO_SPECIALIST_SUMMARY_DIRECTIVE,
+    build_executor_prompt,
+    build_planner_prompt,
+    build_specialist_prompt,
+    build_thread_key,
+)
+from app.agent_bridge.routing import (
+    contains_trigger_phrase,
+    count_role,
+    detect_auto_stop_reason,
+    event_author_identity,
+    event_dedup_key,
+    inject_known_mentions,
+    looks_like_conversational_planner_request,
+    looks_like_planning_request,
+    looks_like_status_request,
+    mentions_user,
+    normalize_event_payload,
+    planner_review_suffix,
+    should_auto_continue_thread,
+    should_auto_summarize_for_planner,
+    should_trigger_executor,
+    should_trigger_planner,
+    should_trigger_specialist,
+    targets_codex,
+    targets_planner,
+    targets_specialist,
+    text_targets_planner,
+    text_targets_specialist,
+)
+from app.agent_bridge.runtime import (
+    collect_repo_state,
+    extract_ollama_model,
+    run_agent_command,
+    run_specialist_command,
+)
+from app.agent_bridge.session_store import ThreadSessionStore
+from app.agent_bridge.slack_io import post_long_message
 from app.agent_bridge.specialist_memory import SpecialistMemoryStore
 
-PLANNER_INSTRUCTIONS = """You are Claude Code acting as the planner for this repository.
-
-Use the provided planner context,
-repo state, and Slack thread transcript.
-You are the driver, not the narrator.
-Respond with these sections only:
-1. Goal
-2. Decision
-3. Task
-4. Success Check
-5. Risks
-6. Handoff
-Rules:
-- keep the full reply under 10 short bullets or lines
-- set or refine one concrete goal for the thread
-- give exactly one next task unless blocked
-- no long explanations, no status recap unless needed for the decision
-- success check must be observable
-- make the handoff directly runnable by Codex"""
-
-PLANNER_CONVERSATION_INSTRUCTIONS = """You are Claude Code
-acting as the planner for this repository.
-
-Use the provided planner context,
-repo state, and Slack thread transcript.
-The latest Slack message is a direct human conversation or coaching message.
-Reply like a strong human teammate first.
-Rules:
-- answer the person's actual question directly
-- sound natural, warm, and clear
-- no rigid Goal/Decision/Task template unless the thread explicitly asks for planning
-- keep it short enough to scan quickly in Slack
-- if useful, end with one concrete next move or offer"""
-
-EXECUTOR_INSTRUCTIONS = """You are Codex acting as the executor for this repository.
-
-Use the provided planner handoff, executor context, planner context,
-repo state, and Slack thread transcript.
-Respond with these sections only:
-1. Goal
-2. What I will do
-3. What I changed or found
-4. Next Check
-5. Blockers or next steps
-Rules:
-- keep it concise and concrete
-- stay inside the current planner goal
-- prefer one bounded move over broad rewrites"""
-
-EXECUTOR_PLANNER_INSTRUCTIONS = """You are Codex acting in technical-planner mode
-for this repository.
-
-Use the provided executor context, planner context,
-repo state, and Slack thread transcript.
-You can think technically, shape implementation steps, ask Claude for product or priority guidance,
-and delegate bounded specialist work to Llama.
-Do not claim code changes unless they were actually run in this thread.
-Respond with these sections only:
-1. Goal
-2. Technical Plan
-3. Claude Question
-4. Llama Delegation
-5. Next Check
-Rules:
-- keep it concise and technical
-- one bounded technical plan only
-- ask Claude only for priority, tradeoff, or acceptance clarification
-- delegate to Llama only for summarize, critique, or structured extraction"""
-
-SPECIALIST_INSTRUCTIONS = """You are Llama acting as a specialist support agent for this repository.
-
-Use the provided specialist context, specialist memory, planner context,
-repo state, and Slack thread transcript.
-Your role is limited to critique, summarization, and structured extraction.
-Your main job is to help Claude stay short and help Codex stay clear.
-Do not plan the project or make code changes.
-Respond with these sections only:
-1. Mode
-2. Findings
-3. Recommended handoff
-Rules:
-- keep the reply under 6 short bullets or lines
-- compress, do not expand
-- prefer blind spots, extracted facts, and cleaner handoffs over commentary"""
-
-AUTO_SPECIALIST_SUMMARY_DIRECTIVE = """Current request:
-- Mode: Summarize
-- Help Claude set the next goal and task for this thread
-- Return at most 4 short bullets
-- Focus on goal, blockers, progress, and clean handoff"""
-
-AUTO_STOP_PHRASES = [
-    "@nazar [decision needed]",
-    "blocked:",
-    "cannot continue without",
-    "blocked",
-    "cannot continue",
-    "can't continue",
-    "need clarification",
-    "requires clarification",
-    "waiting on",
+__all__ = [
+    "SlackAgentBridge",
+    "build_executor_prompt",
+    "build_planner_prompt",
+    "build_specialist_prompt",
+    "build_thread_key",
+    "contains_trigger_phrase",
+    "count_role",
+    "detect_auto_stop_reason",
+    "event_author_identity",
+    "event_dedup_key",
+    "extract_ollama_model",
+    "inject_known_mentions",
+    "looks_like_conversational_planner_request",
+    "looks_like_planning_request",
+    "looks_like_status_request",
+    "normalize_event_payload",
+    "planner_review_suffix",
+    "should_auto_continue_thread",
+    "should_auto_summarize_for_planner",
+    "should_trigger_executor",
+    "should_trigger_planner",
+    "should_trigger_specialist",
+    "targets_codex",
+    "targets_planner",
+    "targets_specialist",
 ]
-
-
-@dataclass(slots=True)
-class AgentResult:
-    name: str
-    content: str
-
-
-def build_thread_key(channel: str, thread_ts: str) -> str:
-    return f"{channel}:{thread_ts}"
-
-
-def render_transcript(messages: list[SessionMessage], *, limit: int) -> str:
-    trimmed = messages[-limit:]
-    chunks = [
-        f"{message.created_at} | {message.author} ({message.role})\n{message.content}"
-        for message in trimmed
-    ]
-    return "\n\n".join(chunks)
-
-
-def read_text_file(path: str) -> str:
-    file_path = Path(path)
-    if not file_path.exists():
-        return ""
-    return file_path.read_text(encoding="utf-8").strip()
-
-
-async def run_text_command(command: str, *, cwd: Path) -> str:
-    process = await asyncio.create_subprocess_shell(
-        command,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=str(cwd),
-    )
-    stdout, stderr = await process.communicate()
-    if process.returncode != 0:
-        return stderr.decode("utf-8", errors="ignore").strip()
-    return stdout.decode("utf-8", errors="ignore").strip()
-
-
-async def collect_repo_state(cwd: Path) -> str:
-    branch = await run_text_command("git rev-parse --abbrev-ref HEAD", cwd=cwd)
-    status = await run_text_command("git status --short", cwd=cwd)
-    commits = await run_text_command("git log -3 --oneline", cwd=cwd)
-    chunks = [f"Branch: {branch or 'unknown'}"]
-    if commits:
-        chunks.append(f"Recent commits:\n{commits}")
-    if status:
-        chunks.append(f"Working tree:\n{status}")
-    else:
-        chunks.append("Working tree: clean")
-    return "\n\n".join(chunks)
-
-
-def build_planner_prompt(
-    messages: list[SessionMessage],
-    *,
-    settings: BridgeSettings,
-    repo_state: str,
-    limit: int,
-    conversation_mode: bool = False,
-) -> str:
-    planner_context = read_text_file(settings.planner_context_path)
-    instructions = (
-        PLANNER_CONVERSATION_INSTRUCTIONS if conversation_mode else PLANNER_INSTRUCTIONS
-    )
-    return (
-        f"{instructions}\n\n"
-        f"Planner context:\n{planner_context or '(missing)'}\n\n"
-        f"Repo state:\n{repo_state or '(unavailable)'}\n\n"
-        f"Slack thread transcript:\n{render_transcript(messages, limit=limit)}"
-    )
-
-
-def build_executor_prompt(
-    messages: list[SessionMessage],
-    planner_output: str,
-    *,
-    settings: BridgeSettings,
-    repo_state: str,
-    limit: int,
-    planner_mode: bool = False,
-) -> str:
-    executor_context = read_text_file(settings.executor_context_path)
-    planner_context = read_text_file(settings.planner_context_path)
-    instructions = EXECUTOR_PLANNER_INSTRUCTIONS if planner_mode else EXECUTOR_INSTRUCTIONS
-    return (
-        f"{instructions}\n\n"
-        f"Executor context:\n{executor_context or '(missing)'}\n\n"
-        f"Planner context:\n{planner_context or '(missing)'}\n\n"
-        f"Repo state:\n{repo_state or '(unavailable)'}\n\n"
-        f"Slack thread transcript:\n{render_transcript(messages, limit=limit)}\n\n"
-        f"Planner handoff:\n{planner_output}"
-    )
-
-
-def build_specialist_prompt(
-    messages: list[SessionMessage],
-    *,
-    settings: BridgeSettings,
-    repo_state: str,
-    limit: int,
-    directive: str | None = None,
-) -> str:
-    planner_context = read_text_file(settings.planner_context_path)
-    specialist_context = read_text_file(settings.specialist_context_path)
-    specialist_memory = read_text_file(settings.specialist_memory_path)
-    request_block = f"{directive.strip()}\n\n" if directive and directive.strip() else ""
-    return (
-        f"{SPECIALIST_INSTRUCTIONS}\n\n"
-        f"{request_block}"
-        f"Specialist context:\n{specialist_context or '(missing)'}\n\n"
-        f"Specialist memory:\n{specialist_memory or '(missing)'}\n\n"
-        f"Planner context:\n{planner_context or '(missing)'}\n\n"
-        f"Repo state:\n{repo_state or '(unavailable)'}\n\n"
-        f"Slack thread transcript:\n{render_transcript(messages, limit=limit)}"
-    )
-
-
-async def run_agent_command(
-    command_template: str,
-    prompt: str,
-    *,
-    cwd: Path,
-) -> str:
-    with tempfile.NamedTemporaryFile(delete=False) as output_file:
-        output_path = Path(output_file.name)
-
-    command = shlex.split(
-        command_template.format(cwd=str(cwd), output_file=str(output_path))
-    )
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=str(cwd),
-    )
-    stdout, stderr = await process.communicate(prompt.encode("utf-8"))
-    output_text = (
-        output_path.read_text(encoding="utf-8").strip()
-        if output_path.exists()
-        else ""
-    )
-    output_path.unlink(missing_ok=True)
-
-    if process.returncode != 0:
-        message = stderr.decode("utf-8", errors="ignore").strip() or stdout.decode(
-            "utf-8", errors="ignore"
-        ).strip()
-        raise RuntimeError(message or f"Agent command failed: {' '.join(command)}")
-
-    final_text = output_text or stdout.decode("utf-8", errors="ignore").strip()
-    return final_text or "(no output)"
-
-
-def extract_ollama_model(command_template: str) -> str | None:
-    template = command_template.strip()
-    if template.startswith("ollama-api:"):
-        model = template.split(":", 1)[1].strip()
-        return model or None
-
-    parts = shlex.split(template)
-    if len(parts) >= 3 and parts[0] == "ollama" and parts[1] == "run":
-        return parts[2]
-    return None
-
-
-async def run_specialist_command(
-    command_template: str,
-    prompt: str,
-    *,
-    cwd: Path,
-    ollama_host: str,
-) -> str:
-    model = extract_ollama_model(command_template)
-    if not model:
-        return await run_agent_command(command_template, prompt, cwd=cwd)
-
-    base_url = os.environ.get("OLLAMA_HOST", ollama_host).rstrip("/")
-    async with httpx.AsyncClient(timeout=120) as client:
-        response = await client.post(
-            f"{base_url}/api/generate",
-            json={
-                "model": model,
-                "prompt": prompt,
-                "stream": False,
-            },
-        )
-        response.raise_for_status()
-        payload = response.json()
-    content = str(payload.get("response", "")).strip()
-    return content or "(no output)"
-
-
-async def post_long_message(
-    client: AsyncWebClient,
-    *,
-    channel: str,
-    thread_ts: str,
-    header: str,
-    content: str,
-) -> None:
-    body = f"*{header}*\n{content}"
-    chunks = [body[i : i + 3500] for i in range(0, len(body), 3500)] or [body]
-    for chunk in chunks:
-        await client.chat_postMessage(channel=channel, thread_ts=thread_ts, text=chunk)
-
-
-def planner_review_suffix(settings: BridgeSettings) -> str:
-    planner_mention = (
-        f"<@{settings.planner_bot_user_id}>"
-        if settings.planner_bot_user_id
-        else settings.planner_trigger_phrase
-    )
-    return f"{planner_mention} please review and plan the next step."
-
-
-def text_targets_planner(text: str, settings: BridgeSettings) -> bool:
-    planner_mention = (
-        f"<@{settings.planner_bot_user_id}>"
-        if settings.planner_bot_user_id
-        else settings.planner_trigger_phrase
-    )
-    return planner_mention in text or settings.planner_trigger_phrase in text
-
-
-def text_targets_specialist(text: str, settings: BridgeSettings) -> bool:
-    specialist_mention = (
-        f"<@{settings.specialist_bot_user_id}>"
-        if settings.specialist_bot_user_id
-        else settings.specialist_trigger_phrase
-    )
-    return specialist_mention in text or settings.specialist_trigger_phrase in text
-
-
-def inject_known_mentions(text: str, settings: BridgeSettings) -> str:
-    updated = text
-    if settings.planner_bot_user_id:
-        updated = updated.replace(
-            settings.planner_trigger_phrase,
-            f"<@{settings.planner_bot_user_id}>",
-        )
-    if settings.executor_bot_user_id:
-        updated = updated.replace(
-            settings.codex_trigger_phrase,
-            f"<@{settings.executor_bot_user_id}>",
-        )
-    if settings.specialist_bot_user_id:
-        updated = updated.replace(
-            settings.specialist_trigger_phrase,
-            f"<@{settings.specialist_bot_user_id}>",
-        )
-    return updated
-
-
-def mentions_user(raw_text: str, user_id: str) -> bool:
-    return bool(user_id and f"<@{user_id}>" in raw_text)
-
-
-def contains_trigger_phrase(cleaned_text: str, trigger_phrase: str) -> bool:
-    phrase = trigger_phrase.strip().lower()
-    return bool(phrase and phrase in cleaned_text.strip().lower())
-
-
-def targets_codex(
-    raw_text: str,
-    cleaned_text: str,
-    settings: BridgeSettings,
-    *,
-    codex_user_id: str,
-) -> bool:
-    return any(
-        [
-            mentions_user(raw_text, codex_user_id),
-            contains_trigger_phrase(cleaned_text, settings.codex_trigger_phrase),
-        ]
-    )
-
-
-def targets_planner(
-    raw_text: str,
-    cleaned_text: str,
-    settings: BridgeSettings,
-    *,
-    planner_user_id: str | None = None,
-) -> bool:
-    user_id = planner_user_id if planner_user_id is not None else settings.planner_bot_user_id
-    return any(
-        [
-            mentions_user(raw_text, user_id),
-            contains_trigger_phrase(cleaned_text, settings.planner_trigger_phrase),
-        ]
-    )
-
-
-def targets_specialist(
-    raw_text: str,
-    cleaned_text: str,
-    settings: BridgeSettings,
-    *,
-    specialist_user_id: str | None = None,
-) -> bool:
-    user_id = (
-        specialist_user_id
-        if specialist_user_id is not None
-        else settings.specialist_bot_user_id
-    )
-    return any(
-        [
-            mentions_user(raw_text, user_id),
-            contains_trigger_phrase(cleaned_text, settings.specialist_trigger_phrase),
-        ]
-    )
-
-
-def thread_has_role(messages: list[SessionMessage], role: str) -> bool:
-    return any(message.role == role for message in messages)
-
-
-def count_role(messages: list[SessionMessage], role: str) -> int:
-    return sum(1 for message in messages if message.role == role)
-
-
-def detect_auto_stop_reason(text: str) -> str | None:
-    lowered = text.lower()
-    for phrase in AUTO_STOP_PHRASES:
-        if phrase in lowered:
-            return phrase
-    return None
-
-
-def looks_like_status_request(text: str) -> bool:
-    lowered = text.strip().lower()
-    return any(
-        phrase in lowered
-        for phrase in [
-            "status",
-            "blocker",
-            "blockers",
-            "what changed",
-            "what can you do",
-            "where are we",
-            "progress",
-        ]
-    )
-
-
-def looks_like_planning_request(text: str) -> bool:
-    lowered = text.strip().lower()
-    return any(
-        phrase in lowered
-        for phrase in [
-            "plan",
-            "think",
-            "discover",
-            "design",
-            "options",
-            "delegate",
-            "how should",
-            "what should",
-            "investigate",
-        ]
-    )
-
-
-def looks_like_conversational_planner_request(text: str) -> bool:
-    lowered = text.strip().lower()
-    if not lowered:
-        return False
-    if looks_like_planning_request(lowered):
-        return False
-    if any(
-        phrase in lowered
-        for phrase in [
-            "talk with me",
-            "as human",
-            "human first",
-            "speak like human",
-            "speak normally",
-            "not robot",
-            "not robotic",
-            "too robotic",
-        ]
-    ):
-        return True
-    if lowered.endswith("?"):
-        return True
-    return any(
-        lowered.startswith(prefix)
-        for prefix in [
-            "hi",
-            "hello",
-            "hey",
-            "what",
-            "how",
-            "why",
-            "can you",
-            "could you",
-            "do you",
-            "are you",
-            "where",
-            "when",
-        ]
-    )
-
-
-def should_auto_continue_thread(
-    messages: list[SessionMessage],
-    *,
-    max_cycles: int,
-    latest_text: str,
-) -> bool:
-    if max_cycles <= 0:
-        return False
-    if detect_auto_stop_reason(latest_text):
-        return False
-    return count_role(messages, "executor") < max_cycles
-
-
-def should_auto_summarize_for_planner(
-    messages: list[SessionMessage],
-    *,
-    threshold: int,
-) -> bool:
-    if threshold <= 0 or len(messages) < threshold:
-        return False
-    recent_roles = [message.role for message in messages[-3:]]
-    return "specialist" not in recent_roles
-
-
-def event_author_identity(
-    event: dict,
-    settings: BridgeSettings,
-    *,
-    self_bot_user_id: str,
-) -> tuple[str, str]:
-    user_id = str(event.get("user") or "")
-    username = str(
-        event.get("username")
-        or (event.get("bot_profile") or {}).get("name")
-        or ""
-    ).strip()
-    username_lower = username.lower()
-
-    if user_id and user_id == self_bot_user_id:
-        return "self", "Self bot"
-    if user_id and user_id == settings.planner_bot_user_id:
-        return "planner", "Claude planner"
-    if user_id and user_id == settings.executor_bot_user_id:
-        return "executor", "Codex executor"
-    if user_id and user_id == settings.specialist_bot_user_id:
-        return "specialist", f"{settings.specialist_display_name} specialist"
-    if username_lower == settings.planner_display_name.strip().lower():
-        return "planner", "Claude planner"
-    if username_lower == settings.executor_display_name.strip().lower():
-        return "executor", "Codex executor"
-    if username_lower == settings.specialist_display_name.strip().lower():
-        return "specialist", f"{settings.specialist_display_name} specialist"
-    if event.get("bot_id"):
-        return "bot", username or "Slack bot"
-    return "user", "Human"
-
-
-def normalize_event_payload(event: dict) -> dict | None:
-    subtype = event.get("subtype")
-    if subtype in {"message_changed", "message_replied"}:
-        nested = event.get("message") or {}
-        if not isinstance(nested, dict):
-            return None
-        merged = dict(nested)
-        merged.setdefault("channel", event.get("channel"))
-        merged.setdefault("hidden", event.get("hidden"))
-        return merged
-    return event
-
-
-def event_dedup_key(event: dict) -> str:
-    digest = hashlib.sha1(
-        "|".join(
-            [
-                str(event.get("channel", "")),
-                str(event.get("thread_ts") or event.get("ts") or ""),
-                str(event.get("ts", "")),
-                str(event.get("user") or event.get("bot_id") or ""),
-                str(event.get("subtype", "")),
-                str(event.get("text", "")),
-            ]
-        ).encode("utf-8")
-    ).hexdigest()
-    return digest
-
-
-def should_trigger_executor(
-    *,
-    raw_text: str,
-    cleaned_text: str,
-    settings: BridgeSettings,
-    codex_user_id: str,
-    planner_user_id: str | None = None,
-    history: list[SessionMessage],
-) -> bool:
-    if targets_codex(raw_text, cleaned_text, settings, codex_user_id=codex_user_id):
-        return True
-
-    if thread_has_role(history, "executor") and not targets_planner(
-        raw_text,
-        cleaned_text,
-        settings,
-        planner_user_id=planner_user_id,
-    ):
-        return True
-
-    return False
-
-
-def should_trigger_planner(
-    *,
-    raw_text: str,
-    cleaned_text: str,
-    settings: BridgeSettings,
-    planner_user_id: str | None = None,
-    codex_user_id: str = "",
-    history: list[SessionMessage],
-) -> bool:
-    if targets_planner(
-        raw_text,
-        cleaned_text,
-        settings,
-        planner_user_id=planner_user_id,
-    ):
-        return True
-
-    if thread_has_role(history, "planner") and not targets_codex(
-        raw_text,
-        cleaned_text,
-        settings,
-        codex_user_id=codex_user_id,
-    ):
-        return True
-
-    return False
-
-
-def should_trigger_specialist(
-    *,
-    raw_text: str,
-    cleaned_text: str,
-    settings: BridgeSettings,
-    specialist_user_id: str | None = None,
-    planner_user_id: str | None = None,
-    codex_user_id: str = "",
-    history: list[SessionMessage],
-) -> bool:
-    if targets_specialist(
-        raw_text,
-        cleaned_text,
-        settings,
-        specialist_user_id=specialist_user_id,
-    ):
-        return True
-
-    if thread_has_role(history, "specialist") and not targets_planner(
-        raw_text,
-        cleaned_text,
-        settings,
-        planner_user_id=planner_user_id,
-    ) and not targets_codex(
-        raw_text,
-        cleaned_text,
-        settings,
-        codex_user_id=codex_user_id,
-    ):
-        return True
-
-    return False
 
 
 class SlackAgentBridge:
