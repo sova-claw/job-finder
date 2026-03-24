@@ -64,7 +64,7 @@ class SchedulerService:
         self,
         *,
         source: str,
-        scrape_fn: Callable[[AsyncSession], Awaitable[dict[str, int]]],
+        scrape_fn: Callable[[AsyncSession], Awaitable[dict[str, object]]],
     ) -> None:
         started = perf_counter()
         async with SessionLocal() as session:
@@ -80,6 +80,7 @@ class SchedulerService:
                         count_new=summary.get("count_new", 0),
                         count_skipped=summary.get("count_skipped", 0),
                         count_failed=summary.get("count_failed", 0),
+                        details=list(summary.get("details", [])),
                     )
                 )
             except Exception as exc:  # noqa: BLE001

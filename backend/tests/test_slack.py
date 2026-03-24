@@ -120,6 +120,27 @@ def test_build_scraper_run_payload_includes_error_only_on_failure() -> None:
     assert payload["blocks"][2]["text"]["text"] == "```network timeout```"
 
 
+def test_build_scraper_run_payload_includes_details_when_present() -> None:
+    payload = slack.build_scraper_run_payload(
+        slack.ScraperRunSummary(
+            source="Djinni",
+            status="success",
+            duration_seconds=8.5,
+            count_found=5,
+            count_new=2,
+            count_skipped=3,
+            details=[
+                "Mode: canary · external-local primary",
+                "Shadow internal: 3 matched / 4 found",
+            ],
+        )
+    )
+
+    assert len(payload["blocks"]) == 2
+    assert "Mode: canary" in payload["blocks"][1]["text"]["text"]
+    assert "Shadow internal" in payload["blocks"][1]["text"]["text"]
+
+
 def test_build_scraper_schedule_payload_contains_cadence_and_next_run() -> None:
     payload = slack.build_scraper_schedule_payload(
         [

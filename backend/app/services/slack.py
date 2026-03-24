@@ -43,6 +43,7 @@ class ScraperRunSummary:
     count_skipped: int = 0
     count_failed: int = 0
     error: str | None = None
+    details: list[str] = field(default_factory=list)
     reported_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -626,6 +627,17 @@ def build_scraper_run_payload(summary: ScraperRunSummary) -> dict[str, object]:
                 "elements": [
                     {"type": "mrkdwn", "text": f"Failed items: {summary.count_failed}"},
                 ],
+            }
+        )
+
+    if summary.details:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "\n".join(f"• {line}" for line in summary.details),
+                },
             }
         )
 

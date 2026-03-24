@@ -85,7 +85,7 @@ def _posting_from_row(row: dict[str, object]) -> ScrapedPosting:
     )
 
 
-async def scrape_external_djinni(session: AsyncSession) -> dict[str, int]:
+async def scrape_external_djinni(session: AsyncSession) -> dict[str, object]:
     rows = await _run_external_djinni_cli()
     created = 0
     skipped = 0

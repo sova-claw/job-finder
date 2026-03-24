@@ -1,4 +1,6 @@
+from datetime import datetime
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -86,6 +88,8 @@ class Settings(BaseSettings):
     djinni_scrape_interval_hours: int = 6
     djinni_cookie_header: str = ""
     external_djinni_scraper_enabled: bool = False
+    djinni_scraper_mode: Literal["internal", "external-local", "canary"] = "internal"
+    djinni_canary_until: datetime | None = None
     external_djinni_repo_path: str = "external/scrapers/scraper-djinni-market-data"
     external_djinni_start_urls_csv: str = (
         "https://djinni.co/jobs/?primary_keyword=QA%20Automation&keywords=Python"
