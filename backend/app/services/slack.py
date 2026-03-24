@@ -225,19 +225,19 @@ def _attachment(*, color: str, blocks: list[dict[str, object]]) -> list[dict[str
     return [{"color": color, "blocks": blocks}]
 
 
-def _plan_meta_fields(
+def _plan_meta_context(
     *,
     status_label: str,
     timestamp: str,
     story_points: int | None = None,
 ) -> dict[str, object]:
-    fields: list[dict[str, str]] = [
-        {"type": "mrkdwn", "text": f"*State*\n{status_label}"},
-        {"type": "mrkdwn", "text": f"*Time*\n{timestamp}"},
+    elements: list[dict[str, str]] = [
+        {"type": "mrkdwn", "text": f"`{status_label}`"},
+        {"type": "mrkdwn", "text": f"`{timestamp}`"},
     ]
     if story_points is not None:
-        fields.insert(1, {"type": "mrkdwn", "text": f"*Size*\n{story_points} SP"})
-    return {"type": "section", "fields": fields}
+        elements.insert(1, {"type": "mrkdwn", "text": f"`{story_points} SP`"})
+    return {"type": "context", "elements": elements}
 
 
 def _plan_body_section(
@@ -614,7 +614,7 @@ def build_plan_update_payload(
                 "text": {"type": "plain_text", "text": f"{emoji} {status_label}"},
             },
             _plan_body_section(text=message_text, link=link_text),
-            _plan_meta_fields(status_label=status_label, timestamp=timestamp),
+            _plan_meta_context(status_label=status_label, timestamp=timestamp),
         ]
         if next_text:
             blocks.append(
@@ -639,7 +639,7 @@ def build_plan_update_payload(
             "text": {"type": "plain_text", "text": f"{emoji} {title_text}"},
         },
         _plan_body_section(text=message_text, link=link_text),
-        _plan_meta_fields(
+        _plan_meta_context(
             status_label=status_label,
             timestamp=timestamp,
             story_points=story_points,
