@@ -286,6 +286,19 @@ def _plan_note_section(message: str) -> dict[str, object]:
     }
 
 
+def _plan_link_actions(link: str) -> dict[str, object]:
+    return {
+        "type": "actions",
+        "elements": [
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Open"},
+                "url": link,
+            }
+        ],
+    }
+
+
 def _parse_task_choices(message: str) -> list[dict[str, object]]:
     choices: list[dict[str, object]] = []
     for raw_line in message.splitlines():
@@ -744,8 +757,7 @@ def build_plan_update_payload(
         }
 
     blocks = [
-        _plan_header_block(f"{emoji}  {status_heading}"),
-        _plan_task_line(title=title_text, link=link_text),
+        _plan_header_block(f"{emoji}  {title_text}"),
         _plan_note_section(message_text),
         _plan_meta_context(
             timestamp=timestamp,
@@ -753,6 +765,8 @@ def build_plan_update_payload(
             eta_text=eta_text,
         ),
     ]
+    if link_text:
+        blocks.append(_plan_link_actions(link_text))
     if next_text:
         blocks.append(
             {

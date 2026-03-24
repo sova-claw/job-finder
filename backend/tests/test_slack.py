@@ -161,15 +161,14 @@ def test_build_plan_update_payload_is_short_and_structured() -> None:
     assert attachment["fallback"] == "🟢 StartupIndex source · Doing"
     blocks = attachment["blocks"]
     assert blocks[0]["type"] == "header"
-    assert blocks[0]["text"]["text"] == "🟢  Work started"
-    assert blocks[1]["text"]["text"] == "*Task:*  `StartupIndex source`"
-    assert blocks[1]["accessory"]["text"]["text"] == "Open"
-    assert blocks[1]["accessory"]["url"] == "https://startup-index.ch/en/the-startup-directory/"
-    assert blocks[2]["text"]["text"] == "StartupIndex discovery source"
-    meta = [item["text"] for item in blocks[3]["elements"]]
+    assert blocks[0]["text"]["text"] == "🟢  StartupIndex source"
+    assert blocks[1]["text"]["text"] == "StartupIndex discovery source"
+    meta = [item["text"] for item in blocks[2]["elements"]]
     assert meta[0] == "◦ 3 SP"
     assert meta[1].startswith("🕐 ")
     assert meta[2] == "⏱ Ends ~14:55"
+    assert blocks[3]["elements"][0]["text"]["text"] == "Open"
+    assert blocks[3]["elements"][0]["url"] == "https://startup-index.ch/en/the-startup-directory/"
     next_meta = [item["text"] for item in blocks[4]["elements"]]
     assert next_meta[0] == "➡️ Next: Choose the clean integration path"
 

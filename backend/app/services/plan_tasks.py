@@ -124,34 +124,44 @@ async def start_plan_task_from_selection(
     normalized_title = normalize_plan_title(title)
     estimate = estimate_for_story_points(story_points)
     eta_text = estimate_finish_time(story_points)
-    started_message = (
+    progress_message = (
         f"In progress · est. {estimate}."
         if estimate
         else "In progress."
     )
-    started_next_step = "Use this thread for updates and questions."
+    root_message = "Started from task list."
+    root_next_step = "Use this thread for updates and questions."
     task = await save_plan_task(
         session,
         title=normalized_title,
         status="progress",
         story_points=story_points,
-        message=started_message,
-        next_step=started_next_step,
+        message=progress_message,
+        next_step=root_next_step,
+    )
+    root_summary = await post_plan_update(
+        status="started",
+        title=task.title,
+        message=root_message,
+        story_points=story_points,
+        next_step=root_next_step,
+        task_id=task.id,
+        thread_ts=None,
     )
     summary = await post_plan_update(
         status="progress",
         title=task.title,
-        message=started_message,
+        message=progress_message,
         story_points=story_points,
         eta_text=eta_text,
-        next_step=started_next_step,
+        next_step=root_next_step,
         task_id=task.id,
-        thread_ts=None,
+        thread_ts=root_summary.thread_ts,
     )
     await attach_plan_task_slack_post(
         session,
         task_id=task.id,
-        thread_ts=summary.thread_ts or "",
+        thread_ts=root_summary.thread_ts or "",
         post_ts=summary.post_ts or "",
     )
     return summary
