@@ -29,6 +29,7 @@ class SlackPlanUpdateRequest(BaseModel):
     status: str
     message: str
     next_step: str | None = None
+    link: str | None = None
 
 
 class SlackPlanUpdateResponse(BaseModel):

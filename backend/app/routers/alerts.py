@@ -86,6 +86,7 @@ async def send_plan_update(payload: SlackPlanUpdateRequest) -> SlackPlanUpdateRe
             status=payload.status,
             message=payload.message,
             next_step=payload.next_step,
+            link=payload.link,
         )
     except RuntimeError as exc:
         raise HTTPException(

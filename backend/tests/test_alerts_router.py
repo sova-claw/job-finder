@@ -117,10 +117,17 @@ def test_send_scraper_schedule_route_handles_missing_config(monkeypatch) -> None
 
 
 def test_send_plan_update_route_returns_summary(monkeypatch) -> None:
-    async def fake_post_plan_update(*, status: str, message: str, next_step: str | None = None):
+    async def fake_post_plan_update(
+        *,
+        status: str,
+        message: str,
+        next_step: str | None = None,
+        link: str | None = None,
+    ):
         assert status == "started"
         assert message == "StartupIndex discovery source"
         assert next_step == "Choose the clean integration path"
+        assert link == "https://startup-index.ch/en/the-startup-directory/"
         return SlackPlanUpdateSummary(
             channel="#plans",
             status=status,
@@ -135,6 +142,7 @@ def test_send_plan_update_route_returns_summary(monkeypatch) -> None:
         json={
             "status": "started",
             "message": "StartupIndex discovery source",
+            "link": "https://startup-index.ch/en/the-startup-directory/",
             "next_step": "Choose the clean integration path",
         },
     )
@@ -146,8 +154,14 @@ def test_send_plan_update_route_returns_summary(monkeypatch) -> None:
 
 
 def test_send_plan_update_route_handles_missing_config(monkeypatch) -> None:
-    async def fake_post_plan_update(*, status: str, message: str, next_step: str | None = None):
-        del status, message, next_step
+    async def fake_post_plan_update(
+        *,
+        status: str,
+        message: str,
+        next_step: str | None = None,
+        link: str | None = None,
+    ):
+        del status, message, next_step, link
         raise RuntimeError("Slack is not configured")
 
     monkeypatch.setattr(alerts_router_module, "post_plan_update", fake_post_plan_update)

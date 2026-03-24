@@ -523,10 +523,13 @@ def build_plan_update_payload(
     status: str,
     message: str,
     next_step: str | None = None,
+    link: str | None = None,
 ) -> dict[str, object]:
     emoji = _plan_status_emoji(status)
     title = status.strip().capitalize() or "Update"
     lines = [f"{emoji} *{title}:* {message.strip()}"]
+    if link and link.strip():
+        lines.append(f"🔗 *Link:* {link.strip()}")
     if next_step and next_step.strip():
         lines.append(f"➡️ *Next:* {next_step.strip()}")
     text = "\n".join(lines)
@@ -883,6 +886,7 @@ async def post_plan_update(
     status: str,
     message: str,
     next_step: str | None = None,
+    link: str | None = None,
     client: AsyncWebClient | None = None,
 ) -> SlackPlanUpdateSummary:
     if not settings.slack_bot_token:
@@ -892,7 +896,12 @@ async def post_plan_update(
     await _post_to_channel(
         slack_client,
         "#plans",
-        build_plan_update_payload(status=status, message=message, next_step=next_step),
+        build_plan_update_payload(
+            status=status,
+            message=message,
+            next_step=next_step,
+            link=link,
+        ),
         cache={},
     )
     return SlackPlanUpdateSummary(channel="#plans", status=status)

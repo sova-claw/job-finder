@@ -149,12 +149,14 @@ def test_build_plan_update_payload_is_short_and_structured() -> None:
     payload = slack.build_plan_update_payload(
         status="started",
         message="StartupIndex discovery source",
+        link="https://startup-index.ch/en/the-startup-directory/",
         next_step="Choose the clean integration path",
     )
 
     assert payload["text"] == "🟡 Started: StartupIndex discovery source"
     body = payload["blocks"][0]["text"]["text"]
     assert "🟡 *Started:* StartupIndex discovery source" in body
+    assert "🔗 *Link:* https://startup-index.ch/en/the-startup-directory/" in body
     assert "➡️ *Next:* Choose the clean integration path" in body
 
 
@@ -548,6 +550,7 @@ async def test_post_plan_update_posts_to_plans(monkeypatch) -> None:
     summary = await slack.post_plan_update(
         status="done",
         message="Slack formatting polished",
+        link="https://example.com/update",
         next_step="StartupIndex discovery source",
         client=object(),  # type: ignore[arg-type]
     )
